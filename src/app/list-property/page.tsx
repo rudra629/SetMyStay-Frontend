@@ -21,12 +21,7 @@ export default function ListPropertyPage() {
   };
 
   // 2. When Payment is "Successful", Send Data to Django
-// Inside src/app/list-property/page.tsx
-
-// ... imports ...
-
-// REPLACE your handlePaymentSuccess function with this one:
-const handlePaymentSuccess = async (plan: { title: string; price: number }) => {
+  const handlePaymentSuccess = async (plan: { title: string; price: number }) => {
     try {
       setIsPaymentModalOpen(false);
       
@@ -34,26 +29,40 @@ const handlePaymentSuccess = async (plan: { title: string; price: number }) => {
       
       // --- BASIC FIELDS ---
       payload.append('title', formData.title);
-      payload.append('description', formData.description || 'No description provided'); // 👈 Prevent empty strings
-      payload.append('property_type', formData.propertyType === 'Rental' ? 'RENTAL' : 'PG');
+      payload.append('description', formData.description || 'No description provided');
+      
+      // 👇 FIX 1: Pass the exact property_type we mapped in the previous step
+      payload.append('property_type', formData.property_type); 
+      
       payload.append('rent', formData.rent.toString());
       payload.append('deposit', formData.rent.toString());
       
       // --- LOCATION ---
       payload.append('city', formData.city);
-      payload.append('area', formData.locality);
+      payload.append('area', formData.locality || formData.area); // Use locality if present
       payload.append('address', formData.address);
       
-      // --- SPECS (The most common cause of 400 errors) ---
-      // We explicitly set defaults if they are missing
+      // --- SPECS ---
       payload.append('sq_ft', formData.area ? formData.area.toString() : '500'); 
-      payload.append('bhk', '1BHK');       // Ensure this matches your Django Model choices!
-      payload.append('furnishing', 'Semi'); // Ensure this matches your Django Model choices!
-      payload.append('occupancy_type', 'Single'); // Required for PG
-      payload.append('gender_preference', 'Any'); // Required for PG
-      
-      // --- STATUS ---
+      payload.append('bhk', '1BHK');       
+      payload.append('furnishing', 'Semi'); 
       payload.append('status', 'PENDING');
+
+      payload.append('owner_name', formData.owner_name);
+      payload.append('phone_primary', formData.phone_primary);
+      payload.append('phone_secondary', formData.phone_secondary);
+
+      // 👇 FIX 2: Conditionally append fields based on the specific property type
+      if (formData.property_type === 'ROOMMATE') {
+          payload.append('gender_preference', formData.gender_preference);
+          payload.append('sharing_status', formData.sharing_status);
+      } else if (formData.property_type === 'RENTAL') {
+          payload.append('is_broker', formData.is_broker ? 'True' : 'False');
+      } else {
+          // Default PG requirements
+          payload.append('occupancy_type', 'Single'); 
+          payload.append('gender_preference', 'Any'); 
+      }
 
       // --- IMAGES ---
       if (formData.images && formData.images.length > 0) {
@@ -62,7 +71,7 @@ const handlePaymentSuccess = async (plan: { title: string; price: number }) => {
         });
       }
 
-      console.log("Submitting Payload..."); // Debug log
+      console.log("Submitting Payload..."); 
 
       await createListing(payload);
 
@@ -76,15 +85,13 @@ const handlePaymentSuccess = async (plan: { title: string; price: number }) => {
     } catch (error: any) {
       console.error("Submission Error:", error);
       
-      // 👇 THIS IS THE IMPORTANT PART
-      // It extracts the specific message from Django (e.g., "BHK is invalid")
       const serverMessage = error.response?.data 
         ? JSON.stringify(error.response.data) 
         : "Please check that all fields are correct.";
 
       toast({
         title: "Submission Failed",
-        description: `Server Error: ${serverMessage}`, // Shows the real reason on screen!
+        description: `Server Error: ${serverMessage}`,
         variant: "destructive",
       });
     }

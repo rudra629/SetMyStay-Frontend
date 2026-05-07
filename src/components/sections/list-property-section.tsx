@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useEffect, useRef } from 'react';
@@ -24,7 +23,6 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { useToast } from '@/hooks/use-toast';
 
-
 const amenitiesList = [
   'Electricity Backup', '24x7 Water Supply', 'Lift/Elevator', 'Gated Security', 'Reserved Parking', 'Visitor Parking', 'Intercom Facility', 'Power Backup', 'Fire Safety', 'CCTV Surveillance',
   'Wi-Fi', 'Broadband Internet', 'Smart Home Features', 'DTH/Cable TV', 'Mobile Charging Points', 'LAN Port',
@@ -42,23 +40,20 @@ const amenitiesList = [
   'Lift', 'Reception Area', 'Front Desk', 'Terrace Access', 'Common Hall', 'Lounge Area', 'Generator Backup', 'Pantry', 'RO Water', 'EV Charging Point',
   'Two-Wheeler Parking', 'Car Parking', 'Valet Parking', 'EV Charging', 'Shuttle Service',
   'Near Metro Station', 'Near Bus Stop', 'Near Grocery Store', 'Near Mall', 'Near College', 'Near Office', 'Near Hospital', 'Near ATM', 'Peaceful Area',
-  // Original Amenities for backward compatibility if needed
   'Parking', 'Gym', 'Pool', 'Elevator', 'Security', 'Meals', 'Laundry', 'Housekeeping', 'Garden',
-  // Roommate specific preferences
   'Non-Smoker', 'Vegetarian', 'Non-Vegetarian', 'Clean', 'Drinker', 'Pet-Friendly'
-].filter((value, index, self) => self.indexOf(value) === index); // Remove duplicates
-
+].filter((value, index, self) => self.indexOf(value) === index);
 
 const amenityIcons: { [key: string]: React.ElementType } = {
   'AC': Snowflake, 'Wi-Fi': Wifi, 'Parking': Car, 'Gymnasium': Dumbbell, 'Lift/Elevator': ArrowBigUpDash, 'Security': Shield, 'Balcony': VenetianMask, 'Power Backup': Zap, 'In-house Mess': Utensils, 'Washing Machine (Private/Common)': Droplets, 'Housekeeping': Droplets, 'Garden': Wind, 'TV': Tv, 'Refrigerator': Snowflake, 'Attached Bathroom': User, 'Reserved Parking': Car, 'Lift': ArrowBigUpDash, 'Gated Security': Shield, 'Non-Smoker': User, 'Vegetarian': Leaf, 'Pet-Friendly': PawPrint, 'Clean': Sparkles
 };
 
+// 👇 UPDATED: Changed keys to uppercase to match Django
 const topAmenitiesByPropertyType: { [key: string]: string[] } = {
-    'Rental': ['AC', 'Wi-Fi', 'Parking', 'Gymnasium', 'Lift/Elevator', 'Security', 'Balcony', 'Power Backup'],
+    'RENTAL': ['AC', 'Wi-Fi', 'Parking', 'Gymnasium', 'Lift/Elevator', 'Security', 'Balcony', 'Power Backup'],
     'PG': ['AC', 'Wi-Fi', 'In-house Mess', 'Washing Machine (Private/Common)', 'Lift/Elevator', 'Security', 'Power Backup', 'Refrigerator'],
-    'Roommate': ['Non-Smoker', 'Vegetarian', 'Pet-Friendly', 'Lift/Elevator', 'Wi-Fi', 'AC', 'Attached Bathroom', 'Reserved Parking']
+    'ROOMMATE': ['Non-Smoker', 'Vegetarian', 'Pet-Friendly', 'Lift/Elevator', 'Wi-Fi', 'AC', 'Attached Bathroom', 'Reserved Parking']
 };
-
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
 
@@ -73,7 +68,8 @@ const videoFileSchema = z
   .refine((files) => files?.[0]?.type.startsWith("video/"), "Please upload a valid video file.");
 
 const formSchema = z.object({
-  propertyType: z.enum(['Rental', 'PG', 'Roommate']),
+  // 👇 UPDATED: Changed enum to exact Django keys
+  propertyType: z.enum(['RENTAL', 'PG', 'ROOMMATE']),
   title: z.string().min(5, 'Title must be at least 5 characters'),
   rent: z.coerce.number().min(1000, 'Rent must be at least 1000'),
   area: z.coerce.number().min(50, 'Area must be at least 50 sq ft'),
@@ -100,14 +96,15 @@ const formSchema = z.object({
   gender: z.string().optional(),
   roommateStatus: z.enum(['hasProperty', 'needsProperty']).optional(),
 }).superRefine((data, ctx) => {
-    if (data.propertyType === 'Rental' && !data.brokerStatus) {
+    // 👇 UPDATED: Checked against uppercase
+    if (data.propertyType === 'RENTAL' && !data.brokerStatus) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
             message: "Broker status is required for rentals.",
             path: ['brokerStatus'],
         });
     }
-    if ((data.propertyType === 'Rental' || data.propertyType === 'PG')) {
+    if ((data.propertyType === 'RENTAL' || data.propertyType === 'PG')) {
         if (!data.electricityBill) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -116,7 +113,7 @@ const formSchema = z.object({
             });
         }
     }
-    if (data.propertyType === 'Roommate') {
+    if (data.propertyType === 'ROOMMATE') {
         if (!data.gender) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -203,7 +200,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      propertyType: 'Rental',
+      propertyType: 'RENTAL', // 👇 UPDATED: Changed to RENTAL
       brokerStatus: 'Without Broker',
       rent: 15000,
       area: 1200,
@@ -239,11 +236,11 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
   }, [cityValue, form]);
 
   useEffect(() => {
-    if (propertyType !== 'Roommate') {
+    // 👇 UPDATED
+    if (propertyType !== 'ROOMMATE') {
         form.setValue('roommateStatus', undefined);
     }
-    // Clear electricity bill if roommate has no property
-    if (propertyType === 'Roommate' && roommateStatus === 'needsProperty') {
+    if (propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty') {
         form.setValue('electricityBill', undefined);
         if (electricityBillRef.current) {
             electricityBillRef.current.value = "";
@@ -251,8 +248,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
     }
   }, [propertyType, roommateStatus, form]);
 
-
-  const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
+const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
     if (mediaFiles.length === 0) {
         toast({
             title: "Photos Required",
@@ -262,15 +258,46 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
         return;
     }
     
-    const videoFile = data.videoFile?.[0];
-    const finalData = { 
-        ...data, 
+    // ---------------------------------------------------------
+    // THE TRANSLATION LAYER: React (CamelCase) -> Django (Snake_case)
+    // ---------------------------------------------------------
+    const finalData: any = { 
+        property_type: data.propertyType, // 👈 Fixed!
+        title: data.title,
+        rent: data.rent,
+        area: data.area,
+        state: data.state,
+        city: data.city,
+        locality: data.locality,
+        sector: data.sector || '',
+        address: data.address,
+        owner_name: data.ownerName,
+        phone_primary: data.phonePrimary,
+        phone_secondary: data.phoneSecondary || '',
+        description: data.description || '',
+        vendor_number: data.vendorNumber || '',
+        
+        // Convert array to string for FormData (if needed by your Django setup)
+        amenities: JSON.stringify(data.amenities || []), 
+        
+        // Rental Specific Mapping
+        is_broker: data.brokerStatus === 'With Broker',
+        
+        // Roommate Specific Mapping 👈 Fixed!
+        gender_preference: data.gender || '',
+        sharing_status: data.roommateStatus === 'hasProperty' ? 'Living in' : (data.roommateStatus === 'needsProperty' ? 'Moving soon' : ''),
+
+        // Files
         images: mediaFiles,
-        videoFile,
+        video_file: data.videoFile?.[0], // Ensure backend expects 'video_file'
+        aadhaar_card: data.aadhaarCard?.[0],
+        electricity_bill: data.electricityBill?.[0],
+        noc: data.noc?.[0],
     };
+
     onSubmit(finalData);
   };
-
+  
   const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files) {
         const newFiles = Array.from(event.target.files);
@@ -302,7 +329,6 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
     form.setValue('amenities', selectedAmenities.filter(a => a !== amenityToRemove));
   };
 
-
   return (
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-12">
       <div className="max-w-4xl mx-auto">
@@ -325,15 +351,16 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        <SelectItem value="Rental">Rental (BHK/House)</SelectItem>
+                        {/* 👇 UPDATED: Changed values to uppercase */}
+                        <SelectItem value="RENTAL">Rental (BHK/House)</SelectItem>
                         <SelectItem value="PG">PG / Co-living</SelectItem>
-                        <SelectItem value="Roommate">Looking for Roommate</SelectItem>
+                        <SelectItem value="ROOMMATE">Looking for Roommate</SelectItem>
                       </SelectContent>
                     </Select>
                   </FormItem>
                 )}/>
 
-                {propertyType === 'Roommate' && (
+                {propertyType === 'ROOMMATE' && (
                     <FormField control={form.control} name="roommateStatus" render={({ field }) => (
                         <FormItem className="space-y-3">
                             <FormLabel>Do you have a property to share?</FormLabel>
@@ -368,7 +395,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                   <FormItem><FormLabel>Area (sq ft)</FormLabel><FormControl><Input type="number" placeholder="1200" {...field} /></FormControl><FormMessage /></FormItem>
                 )}/>
                 
-                {propertyType === 'Roommate' && (
+                {propertyType === 'ROOMMATE' && (
                     <FormField control={form.control} name="gender" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Gender</FormLabel>
@@ -385,7 +412,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                     )}/>
                 )}
                 
-                {propertyType === 'Rental' && (
+                {propertyType === 'RENTAL' && (
                   <FormField control={form.control} name="brokerStatus" render={({ field }) => (
                     <FormItem className="space-y-3">
                       <FormLabel>Are you a broker or owner?</FormLabel>
@@ -466,7 +493,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                                 <div className="mt-6">
                                   <FormLabel>Search for more amenities</FormLabel>
                                   <div className="flex gap-2 mt-2">
-                                      <AutocompleteInput
+                                      <AutocompleteInput 
                                         placeholder="e.g., Piped Gas"
                                         value={customAmenity}
                                         onChange={setCustomAmenity}
@@ -687,11 +714,12 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
               <CardContent className="grid md:grid-cols-2 gap-6">
                  <FileUploadField name="aadhaarCard" label="Aadhaar Card" control={form.control} required inputRef={aadhaarRef} />
                  
-                 {(propertyType === 'Rental' || propertyType === 'PG' || (propertyType === 'Roommate' && roommateStatus === 'hasProperty')) && (
+                 {/* 👇 UPDATED */}
+                 {(propertyType === 'RENTAL' || propertyType === 'PG' || (propertyType === 'ROOMMATE' && roommateStatus === 'hasProperty')) && (
                     <FileUploadField name="electricityBill" label="Electricity Bill" control={form.control} required inputRef={electricityBillRef}/>
                  )}
                  
-                 {propertyType !== 'Roommate' && (
+                 {propertyType !== 'ROOMMATE' && (
                     <div className="md:col-span-2">
                        <FileUploadField name="noc" label="NOC (Optional)" control={form.control} inputRef={nocRef} />
                          <Alert className="mt-2">
@@ -705,7 +733,6 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                  )}
               </CardContent>
             </Card>
-
 
             <Button type="submit" size="lg" className="w-full">
                 Proceed to Payment & List

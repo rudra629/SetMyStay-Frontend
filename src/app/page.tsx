@@ -1,18 +1,14 @@
-
 "use client";
-// Add getProperties and getRoommates to the import
-import { getProperties, getRoommates } from "@/lib/api"; 
-// You can keep the other imports for now
-import React, { useState, useEffect, useCallback, useMemo } from "react";
+import { getProperties } from "@/lib/api"; 
+import React, { useState, useEffect, useCallback } from "react";
 import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, Inquiry, AnyListing, PricingData } from "@/lib/types";
-import { dummyProperties, dummyRoommates, dummyCoupons, dummyAdvertisements, defaultPricing } from "@/lib/data";
+import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
 import { HomeSection } from "@/components/sections/home-section";
 import { ListingsSection } from "@/components/sections/listings-section";
-// import { ListPropertySection } from "@/components/sections/list-property-section";
 
 import { PropertyDetails } from "@/components/modals/property-details";
 import { RoommateDetails } from "@/components/modals/roommate-details";
@@ -29,14 +25,14 @@ import { PaymentConfirmationModal } from "@/components/modals/payment-confirmati
 import { SlotMachineModal } from "@/components/modals/slot-machine-modal";
 import { ContactFab } from "@/components/shared/contact-fab";
 import { HistoryModal } from "@/components/modals/history-modal";
-import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { getFromLocalStorage, saveToLocalStorage } from "@/lib/storage";
 
 
 const defaultUserState = {
-    unlocks: { count: 0, isUnlimited: false, unlockedIds: new Set<string>() },
-    purchaseHistory: [] as Purchase[],
-    likedItemIds: new Set<string>(),
+  unlocks: { count: 0, isUnlimited: false, unlockedIds: new Set<string>() },
+  purchaseHistory: [] as Purchase[],
+  likedItemIds: new Set<string>(),
 };
 
 export default function Home() {
@@ -79,11 +75,8 @@ export default function Home() {
   const [paymentDetails, setPaymentDetails] = useState<{ planName: string; amount: number; onConfirm: () => void; } | null>(null);
 
   const [isSlotMachineModalOpen, setIsSlotMachineModalOpen] = useState(false);
-  
   const [availabilityInquiries, setAvailabilityInquiries] = useState<Inquiry[]>([]);
-
   const [isUnlockConfirmationOpen, setUnlockConfirmationOpen] = useState(false);
-  
   const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
 
   const { toast } = useToast();
@@ -93,35 +86,58 @@ export default function Home() {
   }, []);
 
   // Effect for all one-time data initializations and pop-up logic
-// Effect for all one-time data initializations and pop-up logic
   useEffect(() => {
     if (isClient) {
       // --- Login Status ---
       const loggedInStatus = getFromLocalStorage('setmystay_isLoggedIn', false);
       setIsLoggedIn(loggedInStatus);
       
-      // 👇 NEW: FETCH FROM DJANGO API 👇
+      // 👇 FIX: FETCH FROM DJANGO AND SEPARATE THE LISTINGS 👇
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          // 1. Get Real Data from Backend
-          const realProperties = await getProperties();
-          const realRoommates = await getRoommates();
+          // 1. Get ALL Data from Backend (This single call gets PGs, Rentals, AND Roommates)
+          const allData = await getProperties();
 
-          // 2. Update State
+          // 2. Separate standard listings from roommate listings
+          const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
+          const rawRoommates = allData.filter(p => p.propertyType === 'Roommate');
+
+          // 3. Adapt Roommate Properties to fit the UI's RoommateProfile interface perfectly
+          const realRoommates: RoommateProfile[] = rawRoommates.map(listing => ({
+            id: listing.id,
+            propertyType: 'Roommate',
+            ownerName: listing.title,
+            age: 25, // Property table doesn't store age, using standard placeholder
+            rent: listing.rent,
+            city: listing.city,
+            locality: listing.locality,
+            state: listing.state,
+            completeAddress: listing.completeAddress,
+            partialAddress: listing.partialAddress,
+            contactPhonePrimary: listing.contactPhonePrimary,
+            description: listing.description || `Looking for roommate in ${listing.locality}`,
+            preferences: listing.amenities || [], // Non-smoker, Pet-friendly, etc. map from amenities
+            gender: 'Any', 
+            images: listing.images?.length ? listing.images : ['https://placehold.co/400x400'],
+            views: listing.views,
+            ownerId: listing.ownerId,
+            hasProperty: true, // If it's in the Property table, they have a property to share!
+            status: listing.status as any,
+            submittedAt: listing.submittedAt
+          }));
+
+          // 4. Update State
           setAllListings(realProperties);
           setAllRoommates(realRoommates);
 
-          // 3. Setup Featured Items (Randomize)
+          // 5. Setup Featured Items (Randomize for the Home Page)
           const shuffledListings = [...realProperties].sort(() => 0.5 - Math.random());
           const shuffledRoommates = [...realRoommates].sort(() => 0.5 - Math.random());
           setFeaturedProperties(shuffledListings.slice(0, 3));
-          setFeaturedRoommates(shuffledRoommates.slice(0, 3));
-
-          // 4. Setup "My Properties" (Filter by logged in user)
-          // Note: In a real app, the API should filter this, but we can do it here for now
-          // We will assume "ownerId" matches your username for now
-          // setMyProperties(...) 
+          
+          // Only show roommates who HAVE a property in the featured section
+          setFeaturedRoommates(shuffledRoommates.filter(r => r.hasProperty).slice(0, 3));
 
         } catch (error) {
           console.error("Failed to load data", error);
@@ -130,10 +146,9 @@ export default function Home() {
         }
       };
 
-      fetchData(); // Run the function we just wrote
+      fetchData(); 
       
       // --- User Data (Unlocks, History, etc.) ---
-      // (Keep your existing User Data logic here...)
       setPricing(getFromLocalStorage('pricing', defaultPricing));
       
       const allUserData = getFromLocalStorage('setmystay_user_data', {});
@@ -146,7 +161,7 @@ export default function Home() {
       });
       setPurchaseHistory((userData.purchaseHistory || []).map((p: any) => ({...p, date: new Date(p.date)})));
       
-      const currentLikedIds = new Set<string>(userData.likedItemIds || []); // Fixed Type Error
+      const currentLikedIds = new Set<string>(userData.likedItemIds || []);
       setLikedItemIds(currentLikedIds);
       
       // --- Advertisement Pop-up Logic ---
@@ -187,7 +202,6 @@ export default function Home() {
     }
   }, [isClient, saveUserData]);
   
-  // Effect to handle showing the auth modal when an action requires it
   useEffect(() => {
     if (authActionRequired) {
       toast({
@@ -233,7 +247,6 @@ export default function Home() {
         return currentUnlocks;
     });
     
-    // Show toast AFTER state update
     if (success && newCount !== undefined) {
         toast({
             title: "Details Unlocked!",
@@ -283,7 +296,6 @@ export default function Home() {
   const handleConfirmUnlock = () => {
     if (selectedItem?.data.id) {
       if (useUnlock(selectedItem.data.id)) {
-        // Refresh the selected item to show unlocked state by re-setting it
         handleViewDetails(selectedItem.data, selectedItem.type);
       }
     }
@@ -299,7 +311,6 @@ export default function Home() {
         if (unlocks.isUnlimited || unlocks.count > 0) {
             setUnlockConfirmationOpen(true);
         } else {
-            // User has no unlocks, set the item to unlock and close the details modal to show the pricing modal
             setItemToUnlock(selectedItem);
             setSelectedItem(null); 
             setUnlockModalOpen(true);
@@ -337,7 +348,7 @@ export default function Home() {
     
     setListPaymentModalOpen(false);
     const newId = `new-${Date.now()}`;
-    const ownerId = 'newUser'; // Simulate current user
+    const ownerId = 'newUser'; 
     
     let partialAddress = `${pendingListingData.locality}, ${pendingListingData.city}`;
     if (pendingListingData.sector) {
@@ -373,7 +384,7 @@ export default function Home() {
           ownerId,
           brokerStatus: pendingListingData.brokerStatus,
           lastAvailabilityCheck: new Date().toISOString(),
-          status: 'pending', // Set status to pending
+          status: 'pending', 
           submittedAt: new Date().toISOString(),
           vendorNumber: pendingListingData.vendorNumber,
       }
@@ -404,7 +415,7 @@ export default function Home() {
         images: pendingListingData.images?.length ? pendingListingData.images.map((f: File) => URL.createObjectURL(f)) : ['https://placehold.co/400x400'],
         aadhaarCardUrl: pendingListingData.aadhaarCard ? URL.createObjectURL(pendingListingData.aadhaarCard) : undefined,
         electricityBillUrl: pendingListingData.electricityBill ? URL.createObjectURL(pendingListingData.electricityBill) : undefined,
-        status: 'pending', // Set status to pending
+        status: 'pending', 
         submittedAt: new Date().toISOString(),
     }
       const currentMates = getFromLocalStorage('roommates', dummyRoommates);
@@ -440,7 +451,7 @@ export default function Home() {
         id: `inq_${Date.now()}`,
         propertyId: listing.id,
         propertyTitle: listing.title,
-        userName: 'A Potential Tenant', // Simulate a logged-in user's name
+        userName: 'A Potential Tenant', 
         time: new Date(),
     };
     setAvailabilityInquiries(prev => [...prev, newInquiry]);
@@ -451,7 +462,6 @@ export default function Home() {
     setAuthActionRequired(null);
     saveToLocalStorage('setmystay_isLoggedIn', true);
     
-    // If user intended to list a property, take them there now
     const intendedPage = sessionStorage.getItem('setmystay_intended_page');
     if (intendedPage === 'list') {
       setActivePage('list');
@@ -462,7 +472,6 @@ export default function Home() {
   const handleLogout = () => {
     setIsLoggedIn(false);
     saveToLocalStorage('setmystay_isLoggedIn', false);
-    // Also clear user-specific data from state
     setUnlocks(defaultUserState.unlocks);
     setPurchaseHistory(defaultUserState.purchaseHistory);
     setLikedItemIds(new Set());
@@ -501,21 +510,13 @@ export default function Home() {
     handleOpenConfirmationModal(plan.title, plan.price, () => handleUnlockPurchase(plan.plan, plan.title, plan.price));
   };
 
-const handleNavigationWithAuth = (page: Page) => {
-    // 1. If clicking "List Property", FORCE a redirect to the new page
-    if (page === 'list') {
-        window.location.href = '/list-property'; 
-        return;
-    }
-
-    // 2. Existing login check (keep this if you want to protect other pages)
-    if ((page === 'pg' || page === 'rentals') && !isLoggedIn) {
-        // Optional: you can remove this restriction if browsing should be public
-    }
-
-    // 3. Normal navigation for everything else
-    handleNavigate(page);
-};
+  const handleNavigationWithAuth = (page: Page) => {
+      if (page === 'list') {
+          window.location.href = '/list-property'; 
+          return;
+      }
+      handleNavigate(page);
+  };
   
   const handleGameClick = () => {
     if (!isLoggedIn) {
@@ -554,7 +555,7 @@ const handleNavigationWithAuth = (page: Page) => {
   const getPageType = (): ListingType => {
       if (['pg', 'rentals'].includes(activePage)) return activePage as ListingType;
       if (activePage === 'roommates') return 'roommate';
-      if (activePage === 'my-properties' || activePage === 'liked-properties') return 'rental'; // Default for mixed content
+      if (activePage === 'my-properties' || activePage === 'liked-properties') return 'rental'; 
       return 'rental';
   }
 
@@ -565,7 +566,7 @@ const handleNavigationWithAuth = (page: Page) => {
         setActivePage={handleNavigationWithAuth} 
         onSignInClick={() => setAuthModalOpen(true)}
         onSubscriptionClick={() => {
-          setItemToUnlock(null); // Clear any specific item context when opening pricing generally
+          setItemToUnlock(null); 
           setUnlockModalOpen(true);
         }}
         isLoggedIn={isLoggedIn}
@@ -587,7 +588,7 @@ const handleNavigationWithAuth = (page: Page) => {
         )}
         {(['pg', 'rentals', 'roommates', 'my-properties', 'liked-properties'].includes(activePage)) && (
             <ListingsSection
-              key={activePage} // Re-mount component on page change
+              key={activePage} 
               type={getPageType()}
               listings={getListingsForPage()}
               onViewDetails={handleViewDetails}
@@ -603,9 +604,6 @@ const handleNavigationWithAuth = (page: Page) => {
               inquiries={activePage === 'my-properties' ? availabilityInquiries.filter(inq => myProperties.some(p => p.id === inq.propertyId)) : undefined}
             />
         )}
-        {/* {activePage === 'list' && (
-          <ListPropertySection onSubmit={handleInitiateListing} />
-        )} */}
       </main>
 
       <Footer onNavigate={handleNavigate} />
@@ -649,7 +647,6 @@ const handleNavigationWithAuth = (page: Page) => {
         onClose={() => {
             setUnlockModalOpen(false);
             if (itemToUnlock) {
-                // If we bailed on an unlock to buy more credits, show the item again.
                 setSelectedItem(itemToUnlock);
                 setItemToUnlock(null);
             }

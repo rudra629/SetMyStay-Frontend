@@ -1,8 +1,6 @@
-
-
 "use client";
 
-import React from "react";
+import React, { useEffect } from "react";
 import Link from "next/link";
 import { Menu, X, Crown, User, Home, Users, Building, BedDouble, PlusCircle, Heart, LogOut, History, Briefcase, CheckCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -76,6 +74,20 @@ export function Header({
   onLogout, 
   onHistoryClick,
 }: HeaderProps) {
+
+  // =======================================================================
+  // THE PERSISTENT MODAL TRIGGER
+  // Checks if the user closed the site without finishing the phone number
+  // =======================================================================
+  useEffect(() => {
+    const token = localStorage.getItem('access_token');
+    const isProfileComplete = localStorage.getItem('is_profile_complete');
+    
+    // If they are logged in but skipped the form, force the modal open
+    if (token && isProfileComplete === 'false') {
+      onSignInClick(); 
+    }
+  }, [onSignInClick]);
 
   const navItems = [
     { page: 'home' as Page, label: 'Home', icon: <Home className="w-5 h-5" /> },

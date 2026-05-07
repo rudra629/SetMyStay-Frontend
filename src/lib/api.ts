@@ -26,9 +26,14 @@ api.interceptors.request.use(
 
 // --- ADAPTERS ---
 const adaptPropertyToListing = (data: any): Listing => {
+  // 👇 FIX: Properly map all three property types!
+  let mappedType = 'PG';
+  if (data.property_type === 'RENTAL') mappedType = 'Rental';
+  if (data.property_type === 'ROOMMATE') mappedType = 'Roommate';
+
   return {
     id: data.id.toString(),
-    propertyType: data.property_type === 'RENTAL' ? 'Rental' : 'PG',
+    propertyType: mappedType as any, 
     title: data.title,
     rent: data.rent,
     area: data.sq_ft || 0,
@@ -46,7 +51,7 @@ const adaptPropertyToListing = (data: any): Listing => {
     images: data.images ? data.images.map((img: any) => img.image_url) : [],
     views: 0,
     ownerId: data.owner || '1',
-    brokerStatus: 'Without Broker',
+    brokerStatus: data.is_broker ? 'With Broker' : 'Without Broker', // Fixed this too!
     lastAvailabilityCheck: data.created_at,
     submittedAt: data.created_at,
     status: data.status === 'APPROVED' ? 'approved' : 'pending',
@@ -94,6 +99,18 @@ export const getProperties = async (): Promise<Listing[]> => {
   }
 };
 
+// 👇 ADDED: Fetch specifically Roommate properties using the query param trick
+export const getRoommateProperties = async (): Promise<Listing[]> => {
+  try {
+    const response = await api.get('/properties/?property_type=ROOMMATE');
+    const rawData = response.data.results ? response.data.results : response.data;
+    return rawData.map(adaptPropertyToListing);
+  } catch (error) {
+    console.error("Failed to fetch roommate properties:", error);
+    return [];
+  }
+};
+
 export const getRoommates = async (): Promise<RoommateProfile[]> => {
   try {
     const response = await api.get('/roommates/');
@@ -123,8 +140,8 @@ export const loginUser = async (credentials: { username: string; password: strin
     }
     return response.data;
 };
-// Add this to the bottom of src/lib/api.ts
 
+// --- RESPONSE INTERCEPTOR ---
 api.interceptors.response.use(
   (response) => response,
   (error) => {
@@ -136,10 +153,9 @@ api.interceptors.response.use(
         localStorage.removeItem('refresh_token');
         localStorage.removeItem('setmystay_isLoggedIn');
       }
-      // 2. Reload the page to reset the state (optional, or redirect to login)
-      // window.location.href = '/'; 
     }
     return Promise.reject(error);
   }
 );
+
 export default api;

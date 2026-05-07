@@ -1,6 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  // Relax headers to allow the Google Auth popup to send data back
+  async headers() {
+    return [
+      {
+        source: '/(.*)',
+        headers: [
+          {
+            key: 'Cross-Origin-Opener-Policy',
+            value: 'same-origin-allow-popups',
+          },
+        ],
+      },
+    ]
+  },
+  
+  // Allow external images from these specific domains
   images: {
     remotePatterns: [
       {
@@ -9,11 +25,11 @@ const nextConfig: NextConfig = {
       },
       {
         protocol: 'https',
-        hostname: 'images.unsplash.com', // 👈 Fixes the red error you see now
+        hostname: 'images.unsplash.com', 
       },
       {
         protocol: 'http',
-        hostname: '127.0.0.1',           // 👈 Fixes your local uploads
+        hostname: '127.0.0.1',           
         port: '8000',
         pathname: '/media/**',
       },
