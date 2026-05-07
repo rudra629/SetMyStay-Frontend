@@ -2,7 +2,7 @@
 import { getProperties } from "@/lib/api"; 
 import React, { useState, useEffect, useCallback } from "react";
 import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, Inquiry, AnyListing, PricingData } from "@/lib/types";
-import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing } from "@/lib/data";
+import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing, dummyCoupons } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 
 import { Header } from "@/components/layout/header";
@@ -175,6 +175,7 @@ export default function Home() {
               sessionStorage.setItem('setmystay_ad_shown', 'true');
           }
       }
+      setActiveCoupons(dummyCoupons);
     }
   }, [isClient]);
 

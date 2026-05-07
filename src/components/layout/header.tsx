@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import Link from "next/link";
 import { Menu, X, Crown, User, Home, Users, Building, BedDouble, PlusCircle, Heart, LogOut, History, Briefcase, CheckCircle, ChevronDown } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -74,20 +74,30 @@ export function Header({
   onLogout, 
   onHistoryClick,
 }: HeaderProps) {
+  
+  // 👇 State to hold the dynamic profile details
+  const [userPic, setUserPic] = useState<string | null>(null);
+  const [userName, setUserName] = useState<string | null>(null);
 
   // =======================================================================
-  // THE PERSISTENT MODAL TRIGGER
-  // Checks if the user closed the site without finishing the phone number
+  // THE PERSISTENT MODAL TRIGGER & PROFILE DATA FETCHER
   // =======================================================================
   useEffect(() => {
     const token = localStorage.getItem('access_token');
     const isProfileComplete = localStorage.getItem('is_profile_complete');
     
+    // Grab the picture and name we saved during login
+    const pic = localStorage.getItem('user_pic');
+    const name = localStorage.getItem('user_name');
+    
+    if (pic) setUserPic(pic);
+    if (name) setUserName(name);
+    
     // If they are logged in but skipped the form, force the modal open
     if (token && isProfileComplete === 'false') {
       onSignInClick(); 
     }
-  }, [onSignInClick]);
+  }, [onSignInClick, isLoggedIn]); // Re-run this if their login status changes
 
   const navItems = [
     { page: 'home' as Page, label: 'Home', icon: <Home className="w-5 h-5" /> },
@@ -102,13 +112,16 @@ export function Header({
        <DropdownMenuTrigger asChild>
          <Button variant="ghost" className="relative h-10 w-10 rounded-full">
            <Avatar className="h-10 w-10">
-             <AvatarImage src="https://placehold.co/100x100/4582EF/FFFFFF.png" alt="User" />
-             <AvatarFallback>U</AvatarFallback>
+             {/* 👇 Injecting the Google Picture and Name here! */}
+             <AvatarImage src={userPic || "https://placehold.co/100x100/4582EF/FFFFFF.png"} alt={userName || "User"} />
+             <AvatarFallback>{userName ? userName.charAt(0).toUpperCase() : 'U'}</AvatarFallback>
            </Avatar>
          </Button>
        </DropdownMenuTrigger>
        <DropdownMenuContent className="w-56" align="end" forceMount>
-         <DropdownMenuLabel>My Account</DropdownMenuLabel>
+         <DropdownMenuLabel>
+           My Account {userName ? `(${userName})` : ''}
+         </DropdownMenuLabel>
          <DropdownMenuSeparator />
          <DropdownMenuItem onSelect={() => setActivePage('my-properties')}>
             <Briefcase className="mr-2 h-4 w-4" />

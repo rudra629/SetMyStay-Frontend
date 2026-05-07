@@ -51,7 +51,9 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
         localStorage.setItem('access_token', data.access);
         localStorage.setItem('refresh_token', data.refresh);
         localStorage.setItem('is_profile_complete', String(data.is_profile_complete));
-
+        // PFP and name for a more personalized experience
+        localStorage.setItem('user_pic', data.picture);
+        localStorage.setItem('user_name', data.first_name);
         // 3. Route them based on the flag
         if (data.is_profile_complete) {
           toast({ title: "Welcome back!", description: "You successfully logged in." });
