@@ -52,6 +52,11 @@ const adaptPropertyToListing = (data: any): Listing => {
     views: 0,
     ownerId: data.owner || '1',
     brokerStatus: data.is_broker ? 'With Broker' : 'Without Broker', 
+
+    aadhaarCardUrl: data.document_aadhaar || undefined,
+    electricityBillUrl: data.document_electricity || undefined,
+    nocUrl: data.document_noc || undefined,
+    
     lastAvailabilityCheck: data.created_at,
     submittedAt: data.created_at,
     status: data.status === 'APPROVED' ? 'approved' : 'pending',
@@ -99,6 +104,18 @@ export const getProperties = async (): Promise<Listing[]> => {
   }
 };
 
+export const getAdminProperties = async (): Promise<Listing[]> => {
+  try {
+    // Notice the ?admin=true tag!
+    const response = await api.get('/properties/?admin=true');
+    const rawData = response.data.results ? response.data.results : response.data;
+    return rawData.map(adaptPropertyToListing);
+  } catch (error) {
+    console.error("Failed to fetch admin properties:", error);
+    return [];
+  }
+};
+
 export const getRoommateProperties = async (): Promise<Listing[]> => {
   try {
     const response = await api.get('/properties/?property_type=ROOMMATE');
@@ -139,7 +156,6 @@ export const loginUser = async (credentials: { username: string; password: strin
     return response.data;
 };
 
-// 👇 ADDED: Toggle Favorites
 export const toggleFavoriteProperty = async (propertyId: string) => {
   try {
     const response = await api.post(`/properties/${propertyId}/toggle_favorite/`);
@@ -150,7 +166,6 @@ export const toggleFavoriteProperty = async (propertyId: string) => {
   }
 };
 
-// 👇 ADDED: My Properties (for the next feature we talked about!)
 export const getMyProperties = async (): Promise<Listing[]> => {
   try {
     const response = await api.get('/my-properties/'); 
@@ -159,6 +174,27 @@ export const getMyProperties = async (): Promise<Listing[]> => {
   } catch (error) {
     console.error("Failed to fetch my properties:", error);
     return [];
+  }
+};
+
+export const updatePropertyStatus = async (id: string, newStatus: 'APPROVED' | 'REJECTED' | 'PENDING') => {
+  try {
+    const response = await api.post(`/properties/${id}/update_status/?admin=true`, { status: newStatus });
+    return response.data;
+  } catch (error) {
+    console.error("Failed to update property status:", error);
+    throw error;
+  }
+};
+
+export const deleteProperty = async (id: string) => {
+  
+  try {
+    const response = await api.delete(`/properties/${id}/?admin=true`);
+    return response.data;
+  } catch (error) {
+    console.error("Failed to delete property:", error);
+    throw error;
   }
 };
 
@@ -176,5 +212,43 @@ api.interceptors.response.use(
     return Promise.reject(error);
   }
 );
+
+// --- COUPON API ---
+export const getCoupons = async () => {
+  const res = await api.get('/coupons/');
+  const raw = res.data.results ? res.data.results : res.data;
+  return raw.map((c: any) => ({ ...c, discountPercentage: c.discount_percentage, isActive: c.is_active }));
+};
+export const createCoupon = async (data: any) => await api.post('/coupons/', { code: data.code, discount_percentage: data.discountPercentage, is_active: data.isActive });
+export const updateCoupon = async (id: string, data: any) => await api.patch(`/coupons/${id}/`, { code: data.code, discount_percentage: data.discountPercentage, is_active: data.isActive });
+export const deleteCoupon = async (id: string) => await api.delete(`/coupons/${id}/`);
+
+// --- ADVERTISEMENT API ---
+export const getAdvertisements = async () => {
+  const res = await api.get('/advertisements/');
+  const raw = res.data.results ? res.data.results : res.data;
+  return raw.map((a: any) => ({ ...a, isActive: a.is_active }));
+};
+export const createAdvertisement = async (formData: FormData) => await api.post('/advertisements/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const updateAdvertisement = async (id: string, formData: FormData) => await api.patch(`/advertisements/${id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
+export const deleteAdvertisement = async (id: string) => await api.delete(`/advertisements/${id}/`);
+export const getStaff = async () => {
+  const res = await api.get('/staff/');
+  const raw = res.data.results ? res.data.results : res.data;
+  return raw.map((s: any) => ({
+    id: s.id.toString(),
+    name: s.first_name || s.username, // Fallback to username if name is empty
+    userId: s.username,
+  }));
+};
+export const createStaff = async (data: any) => {
+    return await api.post('/staff/', { first_name: data.name, username: data.userId, password: data.password });
+};
+export const updateStaff = async (id: string, data: any) => {
+    return await api.patch(`/staff/${id}/`, { first_name: data.name, username: data.userId, password: data.password });
+};
+export const deleteStaff = async (id: string) => {
+    return await api.delete(`/staff/${id}/`);
+};
 
 export default api;

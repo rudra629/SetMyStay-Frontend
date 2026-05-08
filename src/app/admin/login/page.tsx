@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -13,17 +12,18 @@ import { useToast } from '@/hooks/use-toast';
 import { KeyRound, ShieldQuestion, Lock, LogIn, HelpCircle, Home } from 'lucide-react';
 import { LoadingSpinner } from '@/components/icons';
 import { getFromLocalStorage, saveToLocalStorage } from '@/lib/storage';
+// 👇 FIX: Import loginUser for the silent token fetch
+import { loginUser } from '@/lib/api'; 
 import {
-  AlertDialog,
-  AlertDialogAction,
-  AlertDialogContent,
-  AlertDialogDescription,
-  AlertDialogFooter,
-  AlertDialogHeader,
-  AlertDialogTitle,
+  AlertDialog, AlertDialogAction, AlertDialogContent, AlertDialogDescription,
+  AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
 
-// Default credentials for the very first run
+// 🚨 IMPORTANT: Enter your Django Superuser credentials here!
+// This allows the 3FA dashboard to silently grab a valid token for database access.
+const MASTER_DJANGO_USERNAME = "rudra"; 
+const MASTER_DJANGO_PASSWORD = "123"; 
+
 const DEFAULT_ADMIN_PASSWORD = 'Bluechip@123';
 const DEFAULT_ADMIN_OTP = '16082007';
 const DEFAULT_ADMIN_QUESTION = 'Who are you?';
@@ -41,7 +41,6 @@ export default function AdminLoginPage() {
   const [showPassword, setShowPassword] = useState(false);
   const [isPasswordRevealed, setIsPasswordRevealed] = useState(false);
 
-  // State for dynamic credentials
   const [adminPassword, setAdminPassword] = useState('');
   const [adminOtp, setAdminOtp] = useState('');
   const [adminQuestion, setAdminQuestion] = useState('');
@@ -49,17 +48,13 @@ export default function AdminLoginPage() {
 
   useEffect(() => {
     setIsMounted(true);
-    // If user is already logged in, redirect them to the dashboard
     if (localStorage.getItem('admin_authenticated') === 'true') {
       router.replace('/admin');
     }
-
-    // Load credentials from localStorage or set defaults
     setAdminPassword(getFromLocalStorage('admin_password', DEFAULT_ADMIN_PASSWORD));
     setAdminOtp(getFromLocalStorage('admin_otp', DEFAULT_ADMIN_OTP));
     setAdminQuestion(getFromLocalStorage('admin_question', DEFAULT_ADMIN_QUESTION));
     setAdminAnswer(getFromLocalStorage('admin_answer', DEFAULT_ADMIN_ANSWER));
-
   }, [router]);
 
   const handlePasswordSubmit = (e: React.FormEvent) => {
@@ -82,20 +77,31 @@ export default function AdminLoginPage() {
     }
   };
 
-  const handleQuestionSubmit = (e: React.FormEvent) => {
+  const handleQuestionSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
-    // Simulate network delay
-    setTimeout(() => {
-      if (answer.toLowerCase() === adminAnswer.toLowerCase()) {
-        toast({ title: 'Authentication Successful!', description: 'Redirecting to dashboard...' });
-        localStorage.setItem('admin_authenticated', 'true');
-        router.push('/admin');
-      } else {
+    
+    if (answer.toLowerCase() === adminAnswer.toLowerCase()) {
+        try {
+            // 👇 FIX: Silently fetch the master token from Django so the 403 error vanishes!
+            await loginUser({ username: MASTER_DJANGO_USERNAME, password: MASTER_DJANGO_PASSWORD });
+            
+            toast({ title: 'Authentication Successful!', description: 'Redirecting to dashboard...' });
+            localStorage.setItem('admin_authenticated', 'true');
+            router.push('/admin');
+        } catch (error) {
+            console.error(error);
+            toast({ 
+                title: 'Database Sync Error', 
+                description: 'Failed to securely link with Django. Check your Master Credentials in the code.', 
+                variant: 'destructive' 
+            });
+            setIsLoading(false);
+        }
+    } else {
         toast({ title: 'Authentication Error', description: 'Incorrect answer.', variant: 'destructive' });
         setIsLoading(false);
-      }
-    }, 1000);
+    }
   };
   
   const handleForgotPasswordSubmit = (e: React.FormEvent) => {

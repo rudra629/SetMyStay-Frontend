@@ -26,7 +26,7 @@ const reelSymbols = [
     { id: 'gem', icon: (props: any) => <Gem {...props} />, color: "text-blue-500" },
 ];
 
-const TWENTY_FOUR_HOURS_IN_MS = 24 * 60 * 60 * 1000;
+const TWENTY_FOUR_HOURS_IN_MS = 1*1;
 
 export function SlotMachineModal({ isOpen, onClose, prizes, onWin }: SlotMachineModalProps) {
     const [reels, setReels] = useState([0, 0, 0]);

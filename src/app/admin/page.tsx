@@ -8,6 +8,12 @@ import { useRouter } from 'next/navigation';
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer } from 'recharts';
 import { Eye, Building, Users, LockOpen, Home, X as XIcon, HelpCircle, CheckCircle, Trash2, ChevronLeft, ChevronRight, LogOut, XCircle, PlusCircle, Edit, ImageIcon, Ticket, Settings, KeyRound, ShieldQuestion, Mail, Phone, MapPin, FileCheck, Search, Filter, Calendar as CalendarIcon, FileText, Bell, UserPlus, Clock, User as UserIcon, Star, MessageSquare, Briefcase, Info } from 'lucide-react';
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
+import { 
+    getAdminProperties, updatePropertyStatus, deleteProperty,
+    getCoupons, createCoupon, updateCoupon, deleteCoupon, // 👈 New
+    getAdvertisements, createAdvertisement, updateAdvertisement, deleteAdvertisement, // 👈 New
+    getStaff, createStaff, updateStaff, deleteStaff
+} from '@/lib/api';
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -16,6 +22,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogD
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { getProperties } from '@/lib/api';
 import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import Image from 'next/image';
@@ -294,9 +301,11 @@ const ContactInfoChangeForm = ({ currentEmail, currentPhone, currentAddress, onS
 interface AdFormDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    onSave: (ad: Omit<Advertisement, 'id'>) => void;
+    // 👇 FIX: Allow passing the file
+    onSave: (ad: Omit<Advertisement, 'id'>, file: File | null) => void; 
     ad: Advertisement | null;
 }
+
 
 const AdFormDialog = ({ isOpen, onClose, onSave, ad }: AdFormDialogProps) => {
     const { toast } = useToast();
@@ -334,17 +343,23 @@ const AdFormDialog = ({ isOpen, onClose, onSave, ad }: AdFormDialogProps) => {
         }
     };
 
+interface AdFormDialogProps {
+    isOpen: boolean;
+    onClose: () => void;
+    // 👇 FIX: Allow passing the file
+    onSave: (ad: Omit<Advertisement, 'id'>, file: File | null) => void; 
+    ad: Advertisement | null;
+}
+
+// Inside AdFormDialog, update handleSubmit:
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!imagePreview) {
-            toast({
-                title: "Image required",
-                description: "Please upload an image for the advertisement.",
-                variant: "destructive",
-            });
+            toast({ title: "Image required", description: "Please upload an image.", variant: "destructive" });
             return;
         }
-        onSave({ title, description, imageUrl: imagePreview, isActive });
+        // 👇 FIX: Pass the imageFile
+        onSave({ title, description, imageUrl: imagePreview, isActive }, imageFile);
     };
 
     return (
@@ -675,7 +690,9 @@ export default function AdminDashboard() {
     // Auth and loading state
     const [isAuthenticated, setIsAuthenticated] = useState(false);
     const [isLoading, setIsLoading] = useState(true);
-
+    const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
+    const [isPinModalOpen, setPinModalOpen] = useState(false);
+    const [isSecurityQuestionModalOpen, setSecurityQuestionModalOpen] = useState(false);
     // Dynamic admin credentials state
     const [adminPassword, setAdminPassword] = useState('');
     const [adminOtp, setAdminOtp] = useState('');
@@ -728,22 +745,62 @@ export default function AdminDashboard() {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
+    // 👇 FIX: Graph now uses actual Database creation dates!
     const chartData = useMemo(() => {
-        if (!selectedDate) return [];
-        switch (chartView) {
-            case 'hourly':
-                return generateHourlyData(selectedDate);
-            case 'daily':
-                return generateDailyData(selectedDate);
-            case 'weekly':
-                return generateWeeklyData(selectedYear);
-            case 'yearly':
-                return generateYearlyData();
-            case 'monthly':
-            default:
-                return generateMonthlyData(selectedYear);
+        const allItems = [...properties, ...roommates];
+        
+        if (chartView === 'hourly' && selectedDate) {
+            const data = Array.from({ length: 24 }, (_, i) => ({ name: `${i.toString().padStart(2, '0')}:00`, listings: 0 }));
+            allItems.forEach(item => {
+                if (!item.submittedAt) return;
+                const d = new Date(item.submittedAt);
+                if (d.toDateString() === selectedDate.toDateString()) {
+                    data[d.getHours()].listings += 1;
+                }
+            });
+            return data;
         }
-    }, [chartView, selectedYear, selectedDate]);
+        
+        if (chartView === 'daily' && selectedDate) {
+            const start = startOfWeek(selectedDate);
+            const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+            const data = days.map((day, i) => ({ name: `${day} (${format(addDays(start, i), 'd')})`, listings: 0 }));
+            allItems.forEach(item => {
+                if (!item.submittedAt) return;
+                const d = new Date(item.submittedAt);
+                if (getWeek(d) === getWeek(selectedDate) && d.getFullYear() === selectedDate.getFullYear()) {
+                    data[d.getDay()].listings += 1;
+                }
+            });
+            return data;
+        }
+
+        if (chartView === 'monthly') {
+            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+            const data = months.map(m => ({ name: m, listings: 0 }));
+            allItems.forEach(item => {
+                if (!item.submittedAt) return;
+                const d = new Date(item.submittedAt);
+                if (d.getFullYear() === selectedYear) {
+                    data[d.getMonth()].listings += 1;
+                }
+            });
+            return data;
+        }
+        
+        if (chartView === 'yearly') {
+            // Include current year even if empty
+            const yearsMap: {[key: string]: number} = { [new Date().getFullYear().toString()]: 0 };
+            allItems.forEach(item => {
+                if (!item.submittedAt) return;
+                const y = new Date(item.submittedAt).getFullYear().toString();
+                yearsMap[y] = (yearsMap[y] || 0) + 1;
+            });
+            return Object.keys(yearsMap).sort().map(y => ({ name: y, listings: yearsMap[y] }));
+        }
+
+        return [];
+    }, [chartView, selectedYear, selectedDate, properties, roommates]);
     
     const years = [new Date().getFullYear(), new Date().getFullYear() - 1, new Date().getFullYear() - 2];
 
@@ -756,7 +813,6 @@ export default function AdminDashboard() {
             setIsLoading(false);
         }
     }, [router]);
-
     useEffect(() => {
         if (isAuthenticated) {
             // Load dynamic credentials
@@ -769,32 +825,64 @@ export default function AdminDashboard() {
             setAdminAddress(getFromLocalStorage('admin_address', DEFAULT_ADMIN_ADDRESS));
 
             setSelectedDate(new Date());
-            setProperties(getFromLocalStorage('properties', dummyProperties));
-            setRoommates(getFromLocalStorage('roommates', dummyRoommates));
+            
+            const fetchAdminData = async () => {
+                try {
+                    const allData = await getAdminProperties();
+
+                    // Separate the listings
+                    const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
+                    const rawRoommates = allData.filter(p => p.propertyType === 'Roommate');
+
+                    const realRoommates: RoommateProfile[] = rawRoommates.map(listing => ({
+                        id: listing.id,
+                        propertyType: 'Roommate',
+                        ownerName: listing.title,
+                        age: 25, 
+                        rent: listing.rent,
+                        city: listing.city,
+                        locality: listing.locality,
+                        state: listing.state,
+                        completeAddress: listing.completeAddress,
+                        partialAddress: listing.partialAddress,
+                        contactPhonePrimary: listing.contactPhonePrimary,
+                        description: listing.description || `Looking for roommate in ${listing.locality}`,
+                        preferences: listing.amenities || [], 
+                        gender: 'Any', 
+                        images: listing.images?.length ? listing.images : ['https://placehold.co/400x400'],
+                        views: listing.views,
+                        ownerId: listing.ownerId,
+                        hasProperty: true, 
+                        status: listing.status as any,
+                        submittedAt: listing.submittedAt
+                    }));
+
+                    setProperties(realProperties);
+                    setRoommates(realRoommates);
+
+                    // Fetch Real Coupons
+                    const dbCoupons = await getCoupons();
+                    setCoupons(dbCoupons);
+
+                    // Fetch Real Ads
+                    const dbAds = await getAdvertisements();
+                    // console.log("🔥 DATABASE ADS FETCHED:", dbAds); // Let's see what Django gives us!
+                    setAdvertisements(dbAds);
+
+                    const dbStaff = await getStaff();
+                    setStaff(dbStaff);
+
+                } catch (error) {
+                    console.error("Failed to load admin data", error);
+                    toast({ title: 'Error', description: 'Could not connect to database.', variant: 'destructive' });
+                }
+            };
+
+            fetchAdminData();
+
+            // CRITICAL: Ensure we only load non-database settings from local storage here
             setExplicitVendors(getFromLocalStorage('explicitVendors', []));
             setPricing(getFromLocalStorage('pricing', defaultPricing));
-            setAdvertisements(getFromLocalStorage('advertisements', [
-                { id: 'ad001', title: 'Grand Opening Offer!', description: 'Get 50% off on all listing plans for a limited time. Use code: GRAND50', imageUrl: 'https://placehold.co/600x400', isActive: true },
-                { id: 'ad002', title: 'Unlock Unlimited Connections', description: 'Subscribe to our unlimited plan and find your perfect roommate today.', imageUrl: 'https://placehold.co/600x400', isActive: false }
-            ]));
-            setCoupons(getFromLocalStorage('coupons', dummyCoupons));
-            setStaff(getFromLocalStorage('staff', dummyStaff));
-            setRatings([
-                { id: 'rating1', rating: 5, feedback: '', date: new Date('2024-07-20') },
-                { id: 'rating2', rating: 4, feedback: 'The user interface is a bit confusing on the listings page.', date: new Date('2024-07-19') },
-                { id: 'rating3', rating: 2, feedback: 'Took too long to find a relevant property. Need better filters.', date: new Date('2024-07-18') },
-                { id: 'rating4', rating: 5, feedback: 'Found a great roommate, thanks!', date: new Date('2024-07-17') },
-                { id: 'rating5', rating: 3, feedback: 'The unlock process was not very clear.', date: new Date('2024-07-16') },
-            ]);
-            setAvailabilityInquiries([
-                { id: 'INQ01', propertyId: 'premium-pg-cbd', propertyTitle: 'Premium PG for Professionals', userName: 'Amit Singh', time: new Date(Date.now() - 15 * 60 * 1000) },
-                { id: 'INQ02', propertyId: 'luxury-2bhk-vashi', propertyTitle: 'Luxury 2BHK Apartment', userName: 'Sneha Verma', time: new Date(Date.now() - 2 * 60 * 60 * 1000) },
-            ]);
-            setAnalytics({
-                totalPageViews: (Math.floor(Math.random() * 5000) + 1000),
-                totalUnlocks: (Math.floor(Math.random() * 500) + 50),
-                lastUpdated: new Date().toLocaleString()
-            });
         }
     }, [isAuthenticated]);
 
@@ -913,49 +1001,47 @@ export default function AdminDashboard() {
         setDetailsModalOpen(true);
     };
     
-    const handleUpdateStatus = (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
-        const staffId = 'S_Admin'; // Using a placeholder for admin approvals
-        const timestamp = new Date();
+const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
+    try {
+        // Convert UI lowercase status to Backend uppercase
+        const backendStatus = status === 'approved' ? 'APPROVED' : 'REJECTED';
         
-        const update = (items: AnyListing[]) => items.map(item => 
-            item.id === id ? { ...item, status, verifiedBy: staffId, verificationTimestamp: timestamp.toISOString() } : item
+        await updatePropertyStatus(id, backendStatus);
+
+        // Update local state so the UI reflects change immediately
+        const updateState = (items: any[]) => items.map(item => 
+            item.id === id ? { ...item, status: status } : item
         );
 
         if (type === 'Roommate') {
-            setRoommates(prev => {
-                const updated = update(prev) as RoommateProfile[];
-                saveToLocalStorage('roommates', updated);
-                return updated;
-            });
+            setRoommates(prev => updateState(prev));
         } else {
-            setProperties(prev => {
-                const updated = update(prev) as Listing[];
-                saveToLocalStorage('properties', updated);
-                return updated;
-            });
+            setProperties(prev => updateState(prev));
         }
 
         setDetailsModalOpen(false);
-        toast({ title: "Status Updated", description: `Item ${id} has been ${status}.` });
-    };
+        toast({ title: "Success", description: `Property has been ${status}.` });
+    } catch (error) {
+        toast({ title: "Error", description: "Failed to update status on server.", variant: "destructive" });
+    }
+};
 
-    const handleDeleteItem = (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
+    const handleDeleteItem = async (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
+    try {
+        await deleteProperty(id);
+
         if (type === 'Roommate') {
-            setRoommates(prev => {
-                const updated = prev.filter(r => r.id !== id);
-                saveToLocalStorage('roommates', updated);
-                return updated;
-            });
+            setRoommates(prev => prev.filter(r => r.id !== id));
         } else {
-            setProperties(prev => {
-                const updated = prev.filter(p => p.id !== id);
-                saveToLocalStorage('properties', updated);
-                return updated;
-            });
+            setProperties(prev => prev.filter(p => p.id !== id));
         }
+
         setDetailsModalOpen(false);
-        toast({ title: "Item Deleted", description: `Item ${id} has been removed.`, variant: 'destructive' });
-    };
+        toast({ title: "Deleted", description: "Property removed from database.", variant: 'destructive' });
+    } catch (error) {
+        toast({ title: "Error", description: "Failed to delete from server.", variant: "destructive" });
+    }
+};
 
     const handlePriceChange = (category: 'unlocks' | 'listings', plan: string, value: number) => {
         if (!pricing) return;
@@ -971,40 +1057,57 @@ export default function AdminDashboard() {
         saveToLocalStorage('pricing', pricing);
         toast({ title: "Pricing Updated", description: "The new prices have been saved." });
     }
-
+    const handleUpdatePassword = (newPass: string) => {
+        saveToLocalStorage('admin_password', newPass);
+        setAdminPassword(newPass);
+    };
+    const handleUpdatePin = (newPin: string) => {
+        saveToLocalStorage('admin_otp', newPin);
+        setAdminOtp(newPin);
+    };
+    const handleUpdateSecurityQuestion = (newQuestion: string, newAnswer: string) => {
+        saveToLocalStorage('admin_question', newQuestion);
+        saveToLocalStorage('admin_answer', newAnswer);
+        setAdminQuestion(newQuestion);
+        setAdminAnswer(newAnswer);
+    };
     const handleOpenAdForm = (ad: Advertisement | null) => {
         setEditingAd(ad);
         setAdFormModalOpen(true);
     };
 
-    const handleSaveAd = (adData: Omit<Advertisement, 'id'>) => {
-        if (editingAd) {
-            setAdvertisements(prevAds => {
-                const updated = prevAds.map(ad => ad.id === editingAd.id ? { ...editingAd, ...adData } : ad);
-                saveToLocalStorage('advertisements', updated);
-                return updated;
-            });
-            toast({ title: "Advertisement Updated" });
-        } else {
-            setAdvertisements(prevAds => {
-                const newAd: Advertisement = { id: `ad_${Date.now()}`, ...adData };
-                const updated = [newAd, ...prevAds];
-                saveToLocalStorage('advertisements', updated);
-                return updated;
-            });
-            toast({ title: "Advertisement Added" });
-        }
-        setAdFormModalOpen(false);
-        setEditingAd(null);
-    };
+    const handleSaveAd = async (adData: Omit<Advertisement, 'id'>, file: File | null) => {
+        try {
+            const formData = new FormData();
+            formData.append('title', adData.title);
+            formData.append('description', adData.description);
+            formData.append('is_active', adData.isActive ? 'true' : 'false');
+            if (file) formData.append('image', file); // Only append if a new file was chosen
 
-    const handleDeleteAd = (adId: string) => {
-        setAdvertisements(prevAds => {
-            const updated = prevAds.filter(ad => ad.id !== adId);
-            saveToLocalStorage('advertisements', updated);
-            return updated;
-        });
-        toast({ title: "Advertisement Deleted", variant: 'destructive' });
+            if (editingAd) {
+                await updateAdvertisement(editingAd.id, formData);
+                toast({ title: "Advertisement Updated" });
+            } else {
+                await createAdvertisement(formData);
+                toast({ title: "Advertisement Added" });
+            }
+            
+            // Refresh list
+            setAdvertisements(await getAdvertisements());
+            setAdFormModalOpen(false);
+            setEditingAd(null);
+        } catch (error) {
+            toast({ title: "Error saving Ad", variant: "destructive" });
+        }
+    };
+    const handleDeleteAd = async (adId: string) => {
+        try {
+            await deleteAdvertisement(adId);
+            setAdvertisements(prev => prev.filter(a => a.id !== adId));
+            toast({ title: "Advertisement Deleted", variant: 'destructive' });
+        } catch(error) {
+            toast({ title: "Error deleting Ad", variant: "destructive" });
+        }
     };
     
     const handleOpenCouponForm = (coupon: Coupon | null) => {
@@ -1012,69 +1115,63 @@ export default function AdminDashboard() {
         setCouponFormModalOpen(true);
     };
 
-    const handleSaveCoupon = (couponData: Omit<Coupon, 'id'>) => {
-        if (editingCoupon) {
-            setCoupons(prevCoupons => {
-                const updated = prevCoupons.map(c => c.id === editingCoupon.id ? { ...editingCoupon, ...couponData } : c);
-                saveToLocalStorage('coupons', updated);
-                return updated;
-            });
-            toast({ title: "Coupon Updated" });
-        } else {
-            setCoupons(prevCoupons => {
-                const newCoupon: Coupon = { id: `coupon_${Date.now()}`, ...couponData };
-                const updated = [newCoupon, ...prevCoupons];
-                saveToLocalStorage('coupons', updated);
-                return updated;
-            });
-            toast({ title: "Coupon Added" });
+    const handleSaveCoupon = async (couponData: Omit<Coupon, 'id'>) => {
+        try {
+            if (editingCoupon) {
+                await updateCoupon(editingCoupon.id, couponData);
+                toast({ title: "Coupon Updated" });
+            } else {
+                await createCoupon(couponData);
+                toast({ title: "Coupon Added" });
+            }
+            setCoupons(await getCoupons());
+            setCouponFormModalOpen(false);
+            setEditingCoupon(null);
+        } catch(error) {
+            toast({ title: "Error saving Coupon. Code might already exist.", variant: "destructive" });
         }
-        setCouponFormModalOpen(false);
-        setEditingCoupon(null);
     };
     
-    const handleDeleteCoupon = (couponId: string) => {
-        setCoupons(prevCoupons => {
-            const updated = prevCoupons.filter(c => c.id !== couponId);
-            saveToLocalStorage('coupons', updated);
-            return updated;
-        });
-        toast({ title: "Coupon Deleted", variant: 'destructive' });
+    const handleDeleteCoupon = async (couponId: string) => {
+        try {
+            await deleteCoupon(couponId);
+            setCoupons(prev => prev.filter(c => c.id !== couponId));
+            toast({ title: "Coupon Deleted", variant: 'destructive' });
+        } catch(error) {
+            toast({ title: "Error deleting Coupon", variant: "destructive" });
+        }
     };
-
     const handleOpenStaffForm = (staffMember: StaffMember | null) => {
         setEditingStaff(staffMember);
         setStaffFormModalOpen(true);
     };
 
-    const handleSaveStaff = (staffData: Omit<StaffMember, 'id'>) => {
-        if (editingStaff) {
-            setStaff(prevStaff => {
-                const updated = prevStaff.map(sm => sm.id === editingStaff.id ? { ...editingStaff, ...staffData } : sm);
-                saveToLocalStorage('staff', updated);
-                return updated;
-            });
-            toast({ title: "Staff Member Updated" });
-        } else {
-            setStaff(prevStaff => {
-                const newStaff: StaffMember = { id: `S${Date.now()}`, ...staffData };
-                const updated = [...prevStaff, newStaff];
-                saveToLocalStorage('staff', updated);
-                return updated;
-            });
-            toast({ title: "Staff Member Added" });
+    const handleSaveStaff = async (staffData: Omit<StaffMember, 'id'>) => {
+        try {
+            if (editingStaff) {
+                await updateStaff(editingStaff.id, staffData);
+                toast({ title: "Staff Updated" });
+            } else {
+                await createStaff(staffData);
+                toast({ title: "Staff Added" });
+            }
+            // Fetch fresh list from DB
+            setStaff(await getStaff());
+            setStaffFormModalOpen(false);
+            setEditingStaff(null);
+        } catch (error) {
+            toast({ title: "Error", description: "Could not save staff. Username might be taken.", variant: "destructive" });
         }
-        setStaffFormModalOpen(false);
-        setEditingStaff(null);
     };
 
-    const handleDeleteStaff = (staffId: string) => {
-        setStaff(prevStaff => {
-            const updated = prevStaff.filter(sm => sm.id !== staffId);
-            saveToLocalStorage('staff', updated);
-            return updated;
-        });
-        toast({ title: "Staff Member Deleted", variant: "destructive" });
+    const handleDeleteStaff = async (staffId: string) => {
+        try {
+            await deleteStaff(staffId);
+            setStaff(prev => prev.filter(s => s.id !== staffId));
+            toast({ title: "Staff Deleted", variant: "destructive" });
+        } catch (error) {
+            toast({ title: "Error", description: "Could not delete staff.", variant: "destructive" });
+        }
     };
     
     const handleViewStaffActivity = (staffName: string, activityType: string, listings: AnyListing[]) => {
@@ -1161,9 +1258,9 @@ export default function AdminDashboard() {
                             <DropdownMenuContent>
                                 <DropdownMenuLabel>Admin Account Security</DropdownMenuLabel>
                                 <DropdownMenuSeparator />
-                                <DropdownMenuItem onSelect={() => setActiveSettingsDialog('password')}>Change Password</DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setActiveSettingsDialog('pin')}>Change PIN</DropdownMenuItem>
-                                <DropdownMenuItem onSelect={() => setActiveSettingsDialog('security')}>Change Security Question</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setPasswordModalOpen(true)}>Change Password</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setPinModalOpen(true)}>Change PIN</DropdownMenuItem>
+                                    <DropdownMenuItem onClick={() => setSecurityQuestionModalOpen(true)}>Change Security Question</DropdownMenuItem>
                             </DropdownMenuContent>
                         </DropdownMenu>
                         <Button variant="outline" onClick={handleLogout}>
@@ -1182,38 +1279,40 @@ export default function AdminDashboard() {
                         <TabsTrigger value="listings">Listings</TabsTrigger>
                         <TabsTrigger value="management">Management</TabsTrigger>
                         <TabsTrigger value="staff">Staff</TabsTrigger>
-                        <TabsTrigger value="ratings">Ratings</TabsTrigger>
+                        {/* <TabsTrigger value="ratings">Ratings</TabsTrigger> */}
                     </TabsList>
                 </div>
                 
                 <TabsContent value="dashboard">
                     <Card className="mb-8">
                         <CardHeader>
-                            <CardTitle className="text-2xl">Analytics Overview</CardTitle>
+                            <CardTitle className="text-2xl">Platform Overview</CardTitle>
                         </CardHeader>
                         <CardContent>
+                            {/* 👇 FIX: Real Data Boxes 👇 */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                                 <div className="bg-blue-50 p-4 rounded-lg flex items-center justify-between">
-                                    <div><p className="text-sm font-medium text-blue-700">Total Page Views</p><p className="text-2xl font-bold text-blue-900">{analytics?.totalPageViews?.toLocaleString() || '0'}</p></div>
-                                    <Eye className="text-3xl text-blue-400 w-8 h-8"/>
-                                </div>
-                                <div className="bg-green-50 p-4 rounded-lg flex items-center justify-between">
-                                    <div><p className="text-sm font-medium text-green-700">Total Properties</p><p className="text-2xl font-bold text-green-900">{properties?.length || 0}</p></div>
-                                    <Building className="text-3xl text-green-400 w-8 h-8"/>
+                                    <div><p className="text-sm font-medium text-blue-700">Total Properties</p><p className="text-2xl font-bold text-blue-900">{properties.length}</p></div>
+                                    <Building className="text-3xl text-blue-400 w-8 h-8"/>
                                 </div>
                                 <div className="bg-purple-50 p-4 rounded-lg flex items-center justify-between">
-                                    <div><p className="text-sm font-medium text-purple-700">Total Roommates</p><p className="text-2xl font-bold text-purple-900">{roommates?.length || 0}</p></div>
+                                    <div><p className="text-sm font-medium text-purple-700">Total Roommates</p><p className="text-2xl font-bold text-purple-900">{roommates.length}</p></div>
                                     <Users className="text-3xl text-purple-400 w-8 h-8"/>
                                 </div>
                                 <div className="bg-yellow-50 p-4 rounded-lg flex items-center justify-between">
-                                    <div><p className="text-sm font-medium text-yellow-700">Total Unlocks</p><p className="text-2xl font-bold text-yellow-900">{analytics?.totalUnlocks?.toLocaleString() || '0'}</p></div>
-                                    <LockOpen className="text-3xl text-yellow-400 w-8 h-8"/>
+                                    <div><p className="text-sm font-medium text-yellow-700">Pending Approvals</p><p className="text-2xl font-bold text-yellow-900">{pendingListings.length}</p></div>
+                                    <Clock className="text-3xl text-yellow-400 w-8 h-8"/>
+                                </div>
+                                <div className="bg-green-50 p-4 rounded-lg flex items-center justify-between">
+                                    <div><p className="text-sm font-medium text-green-700">Live Listings</p><p className="text-2xl font-bold text-green-900">{properties.filter(p => p.status === 'approved').length + roommates.filter(r => r.status === 'approved').length}</p></div>
+                                    <CheckCircle className="text-3xl text-green-400 w-8 h-8"/>
                                 </div>
                             </div>
+                            
                             <div className="mt-6">
                                 <Tabs value={chartView} onValueChange={setChartView} className="w-full">
                                     <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-4">
-                                        <h3 className="text-xl font-semibold text-slate-800">Property Views</h3>
+                                        <h3 className="text-xl font-semibold text-slate-800">New Listings Over Time</h3>
                                         <div className="flex items-center gap-2 sm:gap-4 flex-wrap">
                                             {(chartView === 'daily' || chartView === 'hourly') && (
                                                 <Popover>
@@ -1245,7 +1344,6 @@ export default function AdminDashboard() {
                                                 <TabsList className="whitespace-nowrap">
                                                     <TabsTrigger value="hourly">Hourly</TabsTrigger>
                                                     <TabsTrigger value="daily">Daily</TabsTrigger>
-                                                    <TabsTrigger value="weekly">Weekly</TabsTrigger>
                                                     <TabsTrigger value="monthly">Monthly</TabsTrigger>
                                                     <TabsTrigger value="yearly">Yearly</TabsTrigger>
                                                 </TabsList>
@@ -1257,43 +1355,17 @@ export default function AdminDashboard() {
                                             <BarChart data={chartData}>
                                                 <CartesianGrid strokeDasharray="3 3" />
                                                 <XAxis dataKey="name" />
-                                                <YAxis />
-                                                <Tooltip />
-                                                <Bar dataKey="views" fill="#4582EF" />
+                                                <YAxis allowDecimals={false} />
+                                                <Tooltip formatter={(value) => [value, 'New Listings']} />
+                                                <Bar dataKey="listings" fill="#4582EF" radius={[4, 4, 0, 0]} />
                                             </BarChart>
                                         </ResponsiveContainer>
                                     </div>
                                 </Tabs>
                             </div>
-                            <p className="text-sm text-slate-500 mt-4 text-right">Last Updated: {analytics?.lastUpdated}</p>
                         </CardContent>
                     </Card>
-                    <Card>
-                        <CardHeader>
-                            <CardTitle className="text-2xl">Availability Inquiries</CardTitle>
-                            <CardDescription>Recent inquiries from users about property availability.</CardDescription>
-                        </CardHeader>
-                        <CardContent>
-                            {availabilityInquiries.length > 0 ? (
-                                <div className="space-y-4">
-                                    {availabilityInquiries.map(inquiry => (
-                                        <div key={inquiry.id} className="flex items-center justify-between p-4 bg-blue-50 rounded-lg">
-                                            <div className="flex items-center gap-4">
-                                                <Bell className="w-6 h-6 text-blue-500" />
-                                                <div>
-                                                    <p><strong className="font-semibold">{inquiry.userName}</strong> inquired about <strong className="font-semibold">{inquiry.propertyTitle}</strong></p>
-                                                    <p className="text-sm text-muted-foreground">{formatDistanceToNow(inquiry.time, { addSuffix: true })}</p>
-                                                </div>
-                                            </div>
-                                            <Button variant="outline" size="sm" onClick={() => handleViewDetails(properties.find(p => p.id === inquiry.propertyId)!)}>View Property</Button>
-                                        </div>
-                                    ))}
-                                </div>
-                            ) : (
-                                <p className="text-slate-500 text-center py-4">No new availability inquiries.</p>
-                            )}
-                        </CardContent>
-                    </Card>
+                    {/* The "Availability Inquiries" card has been completely removed from here */}
                 </TabsContent>
 
                 <TabsContent value="listings">
@@ -1527,7 +1599,7 @@ export default function AdminDashboard() {
                                     </Table>
                                 </CardContent>
                             </Card>
-                             <Card>
+                             {/* <Card>
                                 <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
                                     <div>
                                         <CardTitle className="text-2xl">Vendor Management</CardTitle>
@@ -1580,7 +1652,7 @@ export default function AdminDashboard() {
                                         </TableBody>
                                     </Table>
                                 </CardContent>
-                            </Card>
+                            </Card> */}
                         </div>
                     </div>
                 </TabsContent>
@@ -1649,7 +1721,7 @@ export default function AdminDashboard() {
                     </Card>
                 </TabsContent>
 
-                <TabsContent value="ratings">
+                {/* <TabsContent value="ratings">
                     <Card>
                          <CardHeader>
                             <CardTitle className="text-2xl">User Ratings & Feedback</CardTitle>
@@ -1691,7 +1763,7 @@ export default function AdminDashboard() {
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent>
+                </TabsContent> */}
             </Tabs>
             </main>
 
@@ -1909,6 +1981,28 @@ export default function AdminDashboard() {
                         onSave={handleSaveContactInfo}
                         onClose={() => setActiveSettingsDialog(null)} 
                     />
+                </DialogContent>
+            </Dialog>
+
+        {/* Security Setting Modals */}
+            <Dialog open={isPasswordModalOpen} onOpenChange={setPasswordModalOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Change Admin Password</DialogTitle></DialogHeader>
+                    <PasswordChangeForm currentPassword={adminPassword} onSave={handleUpdatePassword} onClose={() => setPasswordModalOpen(false)} />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isPinModalOpen} onOpenChange={setPinModalOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Change Admin PIN</DialogTitle></DialogHeader>
+                    <PinChangeForm currentPin={adminOtp} onSave={handleUpdatePin} onClose={() => setPinModalOpen(false)} />
+                </DialogContent>
+            </Dialog>
+
+            <Dialog open={isSecurityQuestionModalOpen} onOpenChange={setSecurityQuestionModalOpen}>
+                <DialogContent>
+                    <DialogHeader><DialogTitle>Change Security Question</DialogTitle></DialogHeader>
+                    <SecurityQuestionChangeForm currentQuestion={adminQuestion} currentAnswer={adminAnswer} onSave={handleUpdateSecurityQuestion} onClose={() => setSecurityQuestionModalOpen(false)} />
                 </DialogContent>
             </Dialog>
         </div>

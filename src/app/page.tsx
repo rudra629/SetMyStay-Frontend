@@ -1,5 +1,5 @@
 "use client";
-import { getProperties, toggleFavoriteProperty } from "@/lib/api"; 
+import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements } from "@/lib/api"; 
 import React, { useState, useEffect, useCallback } from "react";
 import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, Inquiry, AnyListing, PricingData } from "@/lib/types";
 import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing, dummyCoupons } from "@/lib/data";
@@ -27,7 +27,6 @@ import { ContactFab } from "@/components/shared/contact-fab";
 import { HistoryModal } from "@/components/modals/history-modal";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { getFromLocalStorage, saveToLocalStorage } from "@/lib/storage";
-
 
 const defaultUserState = {
   unlocks: { count: 0, isUnlimited: false, unlockedIds: new Set<string>() },
@@ -85,16 +84,15 @@ export default function Home() {
     setIsClient(true);
   }, []);
 
-  // Effect for all one-time data initializations and pop-up logic
   useEffect(() => {
     if (isClient) {
-      // --- Login Status ---
       const loggedInStatus = getFromLocalStorage('setmystay_isLoggedIn', false);
       setIsLoggedIn(loggedInStatus);
       
       const fetchData = async () => {
         setIsLoading(true);
         try {
+          // 1. Fetch Properties
           const allData = await getProperties();
 
           const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
@@ -131,6 +129,21 @@ export default function Home() {
           setFeaturedProperties(shuffledListings.slice(0, 3));
           setFeaturedRoommates(shuffledRoommates.filter(r => r.hasProperty).slice(0, 3));
 
+          // 2. Fetch Live Coupons from Django
+          const liveCoupons = await getCoupons();
+          setActiveCoupons(liveCoupons);
+
+          // 3. Fetch Live Ads from Django
+          const liveAds = await getAdvertisements();
+          const adShownInSession = sessionStorage.getItem('setmystay_ad_shown');
+          const activeAd = liveAds.find((ad: Advertisement) => ad.isActive);
+          
+          if (activeAd && !adShownInSession) {
+              setAdToShow(activeAd);
+              setIsAdModalOpen(true);
+              sessionStorage.setItem('setmystay_ad_shown', 'true');
+          }
+
         } catch (error) {
           console.error("Failed to load data", error);
         } finally {
@@ -154,18 +167,6 @@ export default function Home() {
       
       const currentLikedIds = new Set<string>(userData.likedItemIds || []);
       setLikedItemIds(currentLikedIds);
-      
-      const adShownInSession = sessionStorage.getItem('setmystay_ad_shown');
-      if (!adShownInSession) {
-          const storedAds = getFromLocalStorage('advertisements', dummyAdvertisements);
-          const activeAd = Array.isArray(storedAds) ? storedAds.find((ad: Advertisement) => ad.isActive) : null;
-          if (activeAd) {
-              setAdToShow(activeAd);
-              setIsAdModalOpen(true);
-              sessionStorage.setItem('setmystay_ad_shown', 'true');
-          }
-      }
-      setActiveCoupons(dummyCoupons);
     }
   }, [isClient]);
 
@@ -206,7 +207,6 @@ export default function Home() {
     }
   }, [authActionRequired, toast]);
 
-  // 👇 ADDED: Sync Liked IDs with the actual Property Cards
   useEffect(() => {
     const allAvailableItems = [...allListings, ...allRoommates];
     const newlyLikedItems = allAvailableItems.filter(item => likedItemIds.has(item.id));

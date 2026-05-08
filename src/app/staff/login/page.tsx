@@ -1,4 +1,3 @@
-
 'use client';
 
 import { useState, useEffect } from 'react';
@@ -12,10 +11,9 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { useToast } from '@/hooks/use-toast';
 import { User, Lock, LogIn, Home } from 'lucide-react';
 import { LoadingSpinner } from '@/components/icons';
-import { getFromLocalStorage } from '@/lib/storage';
-import { dummyStaff } from '@/lib/data';
-import type { StaffMember } from '@/lib/types';
 
+// 👇 FIX: Import the real Django login API
+import { loginUser } from '@/lib/api'; 
 
 export default function StaffLoginPage() {
   const router = useRouter();
@@ -25,39 +23,36 @@ export default function StaffLoginPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [isMounted, setIsMounted] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [staffList, setStaffList] = useState<StaffMember[]>([]);
 
   useEffect(() => {
     setIsMounted(true);
-    // If staff is already logged in, redirect them to the dashboard
-    if (localStorage.getItem('staff_authenticated') === 'true') {
+    // If already authenticated with a Django token, move to dashboard
+    if (localStorage.getItem('access_token') && localStorage.getItem('staff_authenticated') === 'true') {
       router.replace('/staff');
     }
-    // Load staff data from localStorage, fallback to dummy data
-    const storedStaff = getFromLocalStorage('staff', dummyStaff);
-    setStaffList(storedStaff);
   }, [router]);
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsLoading(true);
 
-    const staffMember = staffList.find(
-      (staff: StaffMember) => staff.userId === userId && staff.password === password
-    );
-    
-    // Simulate network delay
-    setTimeout(() => {
-        if (staffMember) {
-          toast({ title: 'Authentication Successful!', description: 'Redirecting to staff dashboard...' });
-          // In a real app, you'd get a session token from the server
-          localStorage.setItem('staff_authenticated', 'true');
-          router.push('/staff');
-        } else {
-          toast({ title: 'Authentication Error', description: 'Incorrect User ID or Password.', variant: 'destructive' });
-          setIsLoading(false);
-        }
-    }, 1000);
+    try {
+      // 👇 FIX: Use the real Django database to verify the staff credentials!
+      const response = await loginUser({ 
+        username: userId, 
+        password: password 
+      });
+
+      if (response.access) {
+        toast({ title: 'Authentication Successful!', description: 'Redirecting to staff dashboard...' });
+        localStorage.setItem('staff_authenticated', 'true');
+        router.push('/staff');
+      }
+    } catch (error: any) {
+      console.error("Login failed:", error);
+      toast({ title: 'Authentication Error', description: 'Incorrect User ID or Password.', variant: 'destructive' });
+      setIsLoading(false);
+    }
   };
 
   if (!isMounted) {

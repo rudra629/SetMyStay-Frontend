@@ -16,6 +16,7 @@ export default function ListPropertyPage() {
 
   // 1. When Form is Valid, Open Payment Modal
   const handleFormSubmit = (data: any) => {
+    console.log("FORM DATA PAYLOAD:", data);
     setFormData(data);
     setIsPaymentModalOpen(true);
   };
@@ -30,16 +31,13 @@ export default function ListPropertyPage() {
       // --- BASIC FIELDS ---
       payload.append('title', formData.title);
       payload.append('description', formData.description || 'No description provided');
-      
-      // 👇 FIX 1: Pass the exact property_type we mapped in the previous step
       payload.append('property_type', formData.property_type); 
-      
       payload.append('rent', formData.rent.toString());
       payload.append('deposit', formData.rent.toString());
       
       // --- LOCATION ---
       payload.append('city', formData.city);
-      payload.append('area', formData.locality || formData.area); // Use locality if present
+      payload.append('area', formData.locality || formData.area);
       payload.append('address', formData.address);
       
       // --- SPECS ---
@@ -52,14 +50,13 @@ export default function ListPropertyPage() {
       payload.append('phone_primary', formData.phone_primary);
       payload.append('phone_secondary', formData.phone_secondary);
 
-      // 👇 FIX 2: Conditionally append fields based on the specific property type
+      // --- CONDITIONAL FIELDS BASED ON TYPE ---
       if (formData.property_type === 'ROOMMATE') {
           payload.append('gender_preference', formData.gender_preference);
           payload.append('sharing_status', formData.sharing_status);
       } else if (formData.property_type === 'RENTAL') {
           payload.append('is_broker', formData.is_broker ? 'True' : 'False');
       } else {
-          // Default PG requirements
           payload.append('occupancy_type', 'Single'); 
           payload.append('gender_preference', 'Any'); 
       }
@@ -71,6 +68,21 @@ export default function ListPropertyPage() {
         });
       }
 
+      // 👇 FIX: Matching the exact keys from your console!
+      const aadharFile = formData.aadhaar_card || formData.aadhaarCard;
+      const electricFile = formData.electricity_bill || formData.electricityBill;
+      const nocFile = formData.noc;
+
+      if (aadharFile) {
+          payload.append('document_aadhaar', Array.isArray(aadharFile) ? aadharFile[0] : aadharFile);
+      }
+      if (electricFile) {
+          payload.append('document_electricity', Array.isArray(electricFile) ? electricFile[0] : electricFile);
+      }
+      if (nocFile) {
+          payload.append('document_noc', Array.isArray(nocFile) ? nocFile[0] : nocFile);
+      }
+      
       console.log("Submitting Payload..."); 
 
       await createListing(payload);
