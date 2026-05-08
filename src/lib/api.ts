@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Listing, RoommateProfile } from './types'; 
 
-const API_URL = 'http://127.0.0.1:8000/api';
+// Changed to localhost to match your Google OAuth fix!
+const API_URL = 'http://localhost:8000/api';
 
 const api = axios.create({
   baseURL: API_URL,
@@ -26,7 +27,6 @@ api.interceptors.request.use(
 
 // --- ADAPTERS ---
 const adaptPropertyToListing = (data: any): Listing => {
-  // 👇 FIX: Properly map all three property types!
   let mappedType = 'PG';
   if (data.property_type === 'RENTAL') mappedType = 'Rental';
   if (data.property_type === 'ROOMMATE') mappedType = 'Roommate';
@@ -51,7 +51,7 @@ const adaptPropertyToListing = (data: any): Listing => {
     images: data.images ? data.images.map((img: any) => img.image_url) : [],
     views: 0,
     ownerId: data.owner || '1',
-    brokerStatus: data.is_broker ? 'With Broker' : 'Without Broker', // Fixed this too!
+    brokerStatus: data.is_broker ? 'With Broker' : 'Without Broker', 
     lastAvailabilityCheck: data.created_at,
     submittedAt: data.created_at,
     status: data.status === 'APPROVED' ? 'approved' : 'pending',
@@ -99,7 +99,6 @@ export const getProperties = async (): Promise<Listing[]> => {
   }
 };
 
-// 👇 ADDED: Fetch specifically Roommate properties using the query param trick
 export const getRoommateProperties = async (): Promise<Listing[]> => {
   try {
     const response = await api.get('/properties/?property_type=ROOMMATE');
@@ -123,7 +122,6 @@ export const getRoommates = async (): Promise<RoommateProfile[]> => {
 };
 
 export const createListing = async (formData: FormData) => {
-  // We use the interceptor for auth, but we need to override the content type for files
   const response = await api.post('/properties/', formData, {
     headers: {
       'Content-Type': 'multipart/form-data',
@@ -141,13 +139,34 @@ export const loginUser = async (credentials: { username: string; password: strin
     return response.data;
 };
 
+// 👇 ADDED: Toggle Favorites
+export const toggleFavoriteProperty = async (propertyId: string) => {
+  try {
+    const response = await api.post(`/properties/${propertyId}/toggle_favorite/`);
+    return response.data;
+  } catch (error) {
+    console.error("Failed to toggle favorite:", error);
+    throw error;
+  }
+};
+
+// 👇 ADDED: My Properties (for the next feature we talked about!)
+export const getMyProperties = async (): Promise<Listing[]> => {
+  try {
+    const response = await api.get('/my-properties/'); 
+    const rawData = response.data.results ? response.data.results : response.data;
+    return rawData.map(adaptPropertyToListing);
+  } catch (error) {
+    console.error("Failed to fetch my properties:", error);
+    return [];
+  }
+};
+
 // --- RESPONSE INTERCEPTOR ---
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    // If we get a 401 (Unauthorized), it means our token is bad.
     if (error.response && error.response.status === 401) {
-      // 1. Clear the bad token
       if (typeof window !== 'undefined') {
         localStorage.removeItem('access_token');
         localStorage.removeItem('refresh_token');

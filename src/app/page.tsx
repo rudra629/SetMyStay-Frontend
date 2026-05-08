@@ -1,5 +1,5 @@
 "use client";
-import { getProperties } from "@/lib/api"; 
+import { getProperties, toggleFavoriteProperty } from "@/lib/api"; 
 import React, { useState, useEffect, useCallback } from "react";
 import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, Inquiry, AnyListing, PricingData } from "@/lib/types";
 import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing, dummyCoupons } from "@/lib/data";
@@ -92,23 +92,19 @@ export default function Home() {
       const loggedInStatus = getFromLocalStorage('setmystay_isLoggedIn', false);
       setIsLoggedIn(loggedInStatus);
       
-      // 👇 FIX: FETCH FROM DJANGO AND SEPARATE THE LISTINGS 👇
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          // 1. Get ALL Data from Backend (This single call gets PGs, Rentals, AND Roommates)
           const allData = await getProperties();
 
-          // 2. Separate standard listings from roommate listings
           const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
           const rawRoommates = allData.filter(p => p.propertyType === 'Roommate');
 
-          // 3. Adapt Roommate Properties to fit the UI's RoommateProfile interface perfectly
           const realRoommates: RoommateProfile[] = rawRoommates.map(listing => ({
             id: listing.id,
             propertyType: 'Roommate',
             ownerName: listing.title,
-            age: 25, // Property table doesn't store age, using standard placeholder
+            age: 25, 
             rent: listing.rent,
             city: listing.city,
             locality: listing.locality,
@@ -117,26 +113,22 @@ export default function Home() {
             partialAddress: listing.partialAddress,
             contactPhonePrimary: listing.contactPhonePrimary,
             description: listing.description || `Looking for roommate in ${listing.locality}`,
-            preferences: listing.amenities || [], // Non-smoker, Pet-friendly, etc. map from amenities
+            preferences: listing.amenities || [], 
             gender: 'Any', 
             images: listing.images?.length ? listing.images : ['https://placehold.co/400x400'],
             views: listing.views,
             ownerId: listing.ownerId,
-            hasProperty: true, // If it's in the Property table, they have a property to share!
+            hasProperty: true, 
             status: listing.status as any,
             submittedAt: listing.submittedAt
           }));
 
-          // 4. Update State
           setAllListings(realProperties);
           setAllRoommates(realRoommates);
 
-          // 5. Setup Featured Items (Randomize for the Home Page)
           const shuffledListings = [...realProperties].sort(() => 0.5 - Math.random());
           const shuffledRoommates = [...realRoommates].sort(() => 0.5 - Math.random());
           setFeaturedProperties(shuffledListings.slice(0, 3));
-          
-          // Only show roommates who HAVE a property in the featured section
           setFeaturedRoommates(shuffledRoommates.filter(r => r.hasProperty).slice(0, 3));
 
         } catch (error) {
@@ -148,7 +140,6 @@ export default function Home() {
 
       fetchData(); 
       
-      // --- User Data (Unlocks, History, etc.) ---
       setPricing(getFromLocalStorage('pricing', defaultPricing));
       
       const allUserData = getFromLocalStorage('setmystay_user_data', {});
@@ -164,7 +155,6 @@ export default function Home() {
       const currentLikedIds = new Set<string>(userData.likedItemIds || []);
       setLikedItemIds(currentLikedIds);
       
-      // --- Advertisement Pop-up Logic ---
       const adShownInSession = sessionStorage.getItem('setmystay_ad_shown');
       if (!adShownInSession) {
           const storedAds = getFromLocalStorage('advertisements', dummyAdvertisements);
@@ -216,6 +206,12 @@ export default function Home() {
     }
   }, [authActionRequired, toast]);
 
+  // 👇 ADDED: Sync Liked IDs with the actual Property Cards
+  useEffect(() => {
+    const allAvailableItems = [...allListings, ...allRoommates];
+    const newlyLikedItems = allAvailableItems.filter(item => likedItemIds.has(item.id));
+    setLikedItems(newlyLikedItems);
+  }, [likedItemIds, allListings, allRoommates]);
 
   const handleNavigate = (page: Page) => {
     setActivePage(page);
@@ -319,11 +315,12 @@ export default function Home() {
     }
   }
   
-  const handleToggleLike = (itemId: string) => {
+  const handleToggleLike = async (itemId: string) => {
     if (!isLoggedIn) {
         setAuthActionRequired('like items');
         return;
     }
+    
     setLikedItemIds(currentSet => {
         const newSet = new Set(currentSet);
         if (newSet.has(itemId)) {
@@ -333,6 +330,17 @@ export default function Home() {
         }
         return newSet;
     });
+
+    try {
+        await toggleFavoriteProperty(itemId);
+    } catch (error) {
+        toast({ title: "Error", description: "Failed to save favorite.", variant: "destructive" });
+        setLikedItemIds(currentSet => {
+            const newSet = new Set(currentSet);
+            newSet.has(itemId) ? newSet.delete(itemId) : newSet.add(itemId);
+            return newSet;
+        });
+    }
   };
 
   const handleInitiateListing = (data: any) => {
