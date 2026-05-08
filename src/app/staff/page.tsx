@@ -1,7 +1,6 @@
-
 'use client';
 
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { Home, LogOut, CheckCircle, Trash2, XCircle, FileText, ChevronLeft, ChevronRight, Search, Phone, MapPin, User as UserIcon, Briefcase, FileCheck } from 'lucide-react';
 import Link from 'next/link';
@@ -15,12 +14,12 @@ import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, 
 import { Input } from '@/components/ui/input';
 import { useToast } from '@/hooks/use-toast';
 import { LoadingSpinner } from '@/components/icons';
-import { dummyProperties, dummyRoommates } from '@/lib/data';
 import { format } from 'date-fns';
-import { getFromLocalStorage, saveToLocalStorage } from '@/lib/storage';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Listing, RoommateProfile, AnyListing } from '@/lib/types';
 
+// 👇 FIX: Import the live Django API calls!
+import { getAdminProperties, updatePropertyStatus, updateRoommateStatus, deleteProperty, deleteRoommate } from '@/lib/api';
 
 export default function StaffDashboard() {
     const router = useRouter();
@@ -40,25 +39,59 @@ export default function StaffDashboard() {
         rejected: ''
     });
 
+    // Fetch the live listings directly from Django
+    const fetchListings = async () => {
+        try {
+            const allData = await getAdminProperties();
+            
+            const realProperties = allData.filter((p: any) => p.propertyType !== 'Roommate');
+            const rawRoommates = allData.filter((p: any) => p.propertyType === 'Roommate');
+
+            const realRoommates: RoommateProfile[] = rawRoommates.map((listing: any) => ({
+                id: listing.id,
+                propertyType: 'Roommate',
+                ownerName: listing.title,
+                age: 25, 
+                rent: listing.rent,
+                city: listing.city,
+                locality: listing.locality,
+                state: listing.state,
+                completeAddress: listing.completeAddress,
+                partialAddress: listing.partialAddress,
+                contactPhonePrimary: listing.contactPhonePrimary,
+                description: listing.description || `Looking for roommate in ${listing.locality}`,
+                preferences: listing.amenities || [], 
+                gender: 'Any', 
+                images: listing.images?.length ? listing.images : ['https://placehold.co/400x400'],
+                views: listing.views,
+                ownerId: listing.ownerId,
+                hasProperty: true, 
+                status: listing.status as any,
+                submittedAt: listing.submittedAt
+            }));
+
+            setProperties(realProperties);
+            setRoommates(realRoommates);
+        } catch (error) {
+            console.error("Failed to load listings", error);
+            toast({ title: 'Error', description: 'Could not fetch live listings from database.', variant: 'destructive' });
+        }
+    };
+
     useEffect(() => {
         const authStatus = localStorage.getItem('staff_authenticated');
         if (authStatus !== 'true') {
             router.replace('/staff/login');
         } else {
             setIsAuthenticated(true);
-            setIsLoading(false);
+            // Wait for DB data to load before clearing the loading spinner
+            fetchListings().finally(() => setIsLoading(false));
         }
     }, [router]);
     
-    useEffect(() => {
-        if (isAuthenticated) {
-            setProperties(getFromLocalStorage('properties', dummyProperties));
-            setRoommates(getFromLocalStorage('roommates', dummyRoommates));
-        }
-    }, [isAuthenticated]);
-    
     const handleLogout = () => {
         localStorage.removeItem('staff_authenticated');
+        localStorage.removeItem('access_token'); // Clear the Django JWT
         router.replace('/staff/login');
     };
     
@@ -68,8 +101,7 @@ export default function StaffDashboard() {
 
     const getListingsByStatus = (status: 'pending' | 'approved' | 'rejected'): AnyListing[] => {
         const allSystemItems: AnyListing[] = [...properties, ...roommates];
-        return allSystemItems
-            .filter(item => item.status === status);
+        return allSystemItems.filter(item => item.status === status);
     };
     
     const filterAndSearchListings = (status: 'pending' | 'approved' | 'rejected') => {
@@ -89,47 +121,44 @@ export default function StaffDashboard() {
         setDetailsModalOpen(true);
     };
     
-    const handleUpdateStatus = (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
-        const staffId = 'Staff1'; // In a real app, this would come from the logged-in staff's session
-        const timestamp = new Date();
-
-        const update = (items: AnyListing[]) => items.map(item => 
-            item.id === id ? { ...item, status, verifiedBy: staffId, verificationTimestamp: timestamp.toISOString() } : item
-        );
-
-        if (type === 'Roommate') {
-            setRoommates(prev => {
-                const updated = update(prev) as RoommateProfile[];
-                saveToLocalStorage('roommates', updated);
-                return updated;
-            });
-        } else {
-            setProperties(prev => {
-                const updated = update(prev) as Listing[];
-                saveToLocalStorage('properties', updated);
-                return updated;
-            });
+    const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
+        try {
+            // Push update to Django
+            if (type === 'Roommate') {
+                await updateRoommateStatus(id, status);
+            } else {
+                await updatePropertyStatus(id, status);
+            }
+            
+            toast({ title: "Status Updated", description: `Listing has been marked as ${status}.` });
+            setDetailsModalOpen(false);
+            
+            // Instantly sync the UI with the fresh Database state
+            fetchListings(); 
+        } catch (error) {
+            console.error("Update error:", error);
+            toast({ title: "Update Failed", description: "Could not sync status with database.", variant: "destructive" });
         }
-        setDetailsModalOpen(false);
-        toast({ title: "Status Updated", description: `Item ${id} has been ${status}.` });
     };
 
-    const handleDeleteItem = (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
-        if (type === 'Roommate') {
-             setRoommates(prev => {
-                const updated = prev.filter(r => r.id !== id);
-                saveToLocalStorage('roommates', updated);
-                return updated;
-            });
-        } else {
-            setProperties(prev => {
-                const updated = prev.filter(p => p.id !== id);
-                saveToLocalStorage('properties', updated);
-                return updated;
-            });
+    const handleDeleteItem = async (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
+        try {
+            // Push delete command to Django
+            if (type === 'Roommate') {
+                await deleteRoommate(id);
+            } else {
+                await deleteProperty(id);
+            }
+            
+            toast({ title: "Item Deleted", description: `Listing permanently removed.`, variant: 'destructive' });
+            setDetailsModalOpen(false);
+            
+            // Instantly sync UI with the fresh Database state
+            fetchListings(); 
+        } catch (error) {
+            console.error("Delete error:", error);
+            toast({ title: "Delete Failed", description: "Could not delete from database.", variant: "destructive" });
         }
-        setDetailsModalOpen(false);
-        toast({ title: "Item Deleted", description: `Item ${id} has been removed.`, variant: 'destructive' });
     };
 
     const StatusBadge = ({ status }: { status: 'pending' | 'approved' | 'rejected' | undefined }) => {
@@ -259,8 +288,9 @@ export default function StaffDashboard() {
                                      <Image 
                                         src={currentItem.images[currentMediaIndex]} 
                                         alt="Listing Media" 
-                                        layout="fill" 
-                                        objectFit="contain" 
+                                        fill
+                                        sizes="(max-width: 768px) 100vw, 800px"
+                                        style={{ objectFit: 'contain' }}
                                         className="p-2"
                                      />
                                      {currentItem.images.length > 1 && (
@@ -331,14 +361,6 @@ export default function StaffDashboard() {
                                     <strong className="block text-sm font-medium text-muted-foreground">Status</strong>
                                     <StatusBadge status={currentItem.status} />
                                 </div>
-                                {currentItem.verifiedBy && currentItem.verificationTimestamp && (
-                                     <div className="p-3 bg-slate-50 rounded-md space-y-1">
-                                        <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><CheckCircle className="w-4 h-4"/> Verified By</strong>
-                                        <div>
-                                            Staff ({currentItem.verifiedBy}) on {format(new Date(currentItem.verificationTimestamp), 'dd MMM yyyy, p')}
-                                        </div>
-                                    </div>
-                                )}
 
                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><UserIcon className="w-4 h-4" /> Owner/User Name</strong>

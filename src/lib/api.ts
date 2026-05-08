@@ -59,7 +59,7 @@ const adaptPropertyToListing = (data: any): Listing => {
     
     lastAvailabilityCheck: data.created_at,
     submittedAt: data.created_at,
-    status: data.status === 'APPROVED' ? 'approved' : 'pending',
+    status: data.status === 'APPROVED' ? 'approved' : data.status === 'REJECTED' ? 'rejected' : 'pending',
   };
 };
 
@@ -86,8 +86,12 @@ const adaptRoommateToProfile = (data: any): RoommateProfile => {
     views: 0,
     ownerId: data.user?.toString() || '1',
     hasProperty: false,
-    status: 'approved',
-    submittedAt: '2025-01-01',
+    submittedAt: data.created_at || '2025-01-01', // Grab real date if available
+    
+    // 👇 FIX: Map the actual status from Django instead of hardcoding it
+    status: data.status === 'APPROVED' ? 'approved' : data.status === 'REJECTED' ? 'rejected' : 'pending',
+    
+    
   };
 };
 
@@ -177,9 +181,10 @@ export const getMyProperties = async (): Promise<Listing[]> => {
   }
 };
 
-export const updatePropertyStatus = async (id: string, newStatus: 'APPROVED' | 'REJECTED' | 'PENDING') => {
+// --- STAFF PROPERTY & ROOMMATE MANAGEMENT ---
+export const updatePropertyStatus = async (id: string, newStatus: string) => {
   try {
-    const response = await api.post(`/properties/${id}/update_status/?admin=true`, { status: newStatus });
+    const response = await api.post(`/properties/${id}/update_status/?admin=true`, { status: newStatus.toUpperCase() });
     return response.data;
   } catch (error) {
     console.error("Failed to update property status:", error);
@@ -188,12 +193,32 @@ export const updatePropertyStatus = async (id: string, newStatus: 'APPROVED' | '
 };
 
 export const deleteProperty = async (id: string) => {
-  
   try {
     const response = await api.delete(`/properties/${id}/?admin=true`);
     return response.data;
   } catch (error) {
     console.error("Failed to delete property:", error);
+    throw error;
+  }
+};
+
+// 👇 ADDED MISSING ROOMMATE FUNCTIONS FOR STAFF 👇
+export const updateRoommateStatus = async (id: string, newStatus: string) => {
+  try {
+    const response = await api.patch(`/roommates/${id}/`, { status: newStatus.toUpperCase() });
+    return response.data;
+  } catch (error) {
+    console.error("Failed to update roommate status:", error);
+    throw error;
+  }
+};
+
+export const deleteRoommate = async (id: string) => {
+  try {
+    const response = await api.delete(`/roommates/${id}/`);
+    return response.data;
+  } catch (error) {
+    console.error("Failed to delete roommate:", error);
     throw error;
   }
 };
@@ -232,6 +257,8 @@ export const getAdvertisements = async () => {
 export const createAdvertisement = async (formData: FormData) => await api.post('/advertisements/', formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const updateAdvertisement = async (id: string, formData: FormData) => await api.patch(`/advertisements/${id}/`, formData, { headers: { 'Content-Type': 'multipart/form-data' } });
 export const deleteAdvertisement = async (id: string) => await api.delete(`/advertisements/${id}/`);
+
+// --- STAFF API ---
 export const getStaff = async () => {
   const res = await api.get('/staff/');
   const raw = res.data.results ? res.data.results : res.data;
