@@ -1,9 +1,8 @@
-"use client";
-import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements } from "@/lib/api"; 
-import React, { useState, useEffect, useCallback } from "react";
-import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, Inquiry, AnyListing, PricingData } from "@/lib/types";
+"use client";import React, { useState, useEffect, useCallback } from "react";
+import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, AnyListing, PricingData } from "@/lib/types";
 import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing, dummyCoupons } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
+import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements, createListing } from "@/lib/api";
 
 import { Header } from "@/components/layout/header";
 import { Footer } from "@/components/layout/footer";
@@ -74,7 +73,6 @@ export default function Home() {
   const [paymentDetails, setPaymentDetails] = useState<{ planName: string; amount: number; onConfirm: () => void; } | null>(null);
 
   const [isSlotMachineModalOpen, setIsSlotMachineModalOpen] = useState(false);
-  const [availabilityInquiries, setAvailabilityInquiries] = useState<Inquiry[]>([]);
   const [isUnlockConfirmationOpen, setUnlockConfirmationOpen] = useState(false);
   const [activeCoupons, setActiveCoupons] = useState<Coupon[]>([]);
 
@@ -352,91 +350,90 @@ export default function Home() {
     setListPaymentModalOpen(true);
   };
 
-  const handleListProperty = () => {
+  // Make sure to import createListing at the top of your file!
+// import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements, createListing } from "@/lib/api";
+
+const handleListProperty = async () => {
     if (!pendingListingData) return;
-    
+    console.log("AMENITIES BEING SENT:", pendingListingData.amenities);
     setListPaymentModalOpen(false);
-    const newId = `new-${Date.now()}`;
-    const ownerId = 'newUser'; 
     
     let partialAddress = `${pendingListingData.locality}, ${pendingListingData.city}`;
     if (pendingListingData.sector) {
       partialAddress = `${pendingListingData.sector}, ${pendingListingData.locality}, ${pendingListingData.city}`;
     }
 
-    if ('propertyType' in pendingListingData && pendingListingData.propertyType !== 'Roommate') {
-        const mappedListing: Listing = {
-          id: newId,
-          propertyType: pendingListingData.propertyType,
-          title: pendingListingData.title,
-          rent: pendingListingData.rent,
-          area: pendingListingData.area, 
-          state: pendingListingData.state,
-          city: pendingListingData.city,
-          locality: pendingListingData.locality,
-          sector: pendingListingData.sector,
-          completeAddress: pendingListingData.address,
-          partialAddress: partialAddress,
-          ownerName: pendingListingData.ownerName,
-          contactPhonePrimary: pendingListingData.phonePrimary,
-          contactPhoneSecondary: pendingListingData.phoneSecondary,
-          description: pendingListingData.description,
-          furnishedStatus: 'Furnished', 
-          amenities: pendingListingData.amenities,
-          size: '2 BHK', 
-          images: pendingListingData.images?.length ? pendingListingData.images.map((f: File) => URL.createObjectURL(f)) : ['https://placehold.co/600x400'],
-          videoUrl: pendingListingData.videoFile ? URL.createObjectURL(pendingListingData.videoFile) : undefined,
-          aadhaarCardUrl: pendingListingData.aadhaarCard ? URL.createObjectURL(pendingListingData.aadhaarCard) : undefined,
-          electricityBillUrl: pendingListingData.electricityBill ? URL.createObjectURL(pendingListingData.electricityBill) : undefined,
-          nocUrl: pendingListingData.noc ? URL.createObjectURL(pendingListingData.noc) : undefined,
-          views: 0,
-          ownerId,
-          brokerStatus: pendingListingData.brokerStatus,
-          lastAvailabilityCheck: new Date().toISOString(),
-          status: 'pending', 
-          submittedAt: new Date().toISOString(),
-          vendorNumber: pendingListingData.vendorNumber,
-      }
-      const currentProps = getFromLocalStorage('properties', dummyProperties);
-      saveToLocalStorage('properties', [...currentProps, mappedListing]);
-    } else {
-       const mappedRoommate: RoommateProfile = {
-        id: newId,
-        propertyType: 'Roommate',
-        ownerName: pendingListingData.ownerName,
-        age: 30, 
-        rent: pendingListingData.rent,
-        area: pendingListingData.area,
-        state: pendingListingData.state,
-        city: pendingListingData.city,
-        locality: pendingListingData.locality,
-        sector: pendingListingData.sector,
-        completeAddress: pendingListingData.address,
-        partialAddress: partialAddress,
-        contactPhonePrimary: pendingListingData.phonePrimary,
-        contactPhoneSecondary: pendingListingData.phoneSecondary,
-        description: pendingListingData.description,
-        preferences: [], 
-        gender: pendingListingData.gender || 'Any',
-        views: 0,
-        ownerId,
-        hasProperty: pendingListingData.roommateStatus === 'hasProperty', 
-        images: pendingListingData.images?.length ? pendingListingData.images.map((f: File) => URL.createObjectURL(f)) : ['https://placehold.co/400x400'],
-        aadhaarCardUrl: pendingListingData.aadhaarCard ? URL.createObjectURL(pendingListingData.aadhaarCard) : undefined,
-        electricityBillUrl: pendingListingData.electricityBill ? URL.createObjectURL(pendingListingData.electricityBill) : undefined,
-        status: 'pending', 
-        submittedAt: new Date().toISOString(),
+    try {
+        // We need to build a FormData object because we are sending files (images/documents) to Django
+        const formData = new FormData();
+        
+        // Basic Fields
+        formData.append('title', pendingListingData.title || pendingListingData.ownerName);
+        formData.append('owner_name', pendingListingData.ownerName);
+        formData.append('rent', pendingListingData.rent.toString());
+        formData.append('city', pendingListingData.city);
+        formData.append('area', pendingListingData.locality);
+        formData.append('address', pendingListingData.address);
+        formData.append('phone_primary', pendingListingData.phonePrimary);
+        
+        if (pendingListingData.phoneSecondary) {
+            formData.append('phone_secondary', pendingListingData.phoneSecondary);
+        }
+        
+        if (pendingListingData.description) {
+            formData.append('description', pendingListingData.description);
+        }
+
+        // Type Specific Fields
+        if ('propertyType' in pendingListingData && pendingListingData.propertyType !== 'Roommate') {
+            formData.append('property_type', pendingListingData.propertyType === 'Rental' ? 'RENTAL' : 'PG');
+            formData.append('sq_ft', pendingListingData.area?.toString() || '0');
+            formData.append('is_broker', pendingListingData.brokerStatus === 'broker' ? 'true' : 'false');
+            
+            // Append Amenities as a comma-separated string for Django
+            if (pendingListingData.amenities) {
+                const amenitiesString = Array.isArray(pendingListingData.amenities) 
+                    ? pendingListingData.amenities.join(',') 
+                    : pendingListingData.amenities;
+                formData.append('amenities_list', amenitiesString);
+            }
+        } else {
+            formData.append('property_type', 'ROOMMATE');
+            formData.append('budget', pendingListingData.rent.toString());
+            formData.append('location_preference', partialAddress);
+        }
+
+        // Append Files (Images and Docs)
+        if (pendingListingData.images) {
+            pendingListingData.images.forEach((file: File, index: number) => {
+                formData.append(`uploaded_images`, file);
+            });
+        }
+        if (pendingListingData.aadhaarCard) formData.append('document_aadhaar', pendingListingData.aadhaarCard);
+        if (pendingListingData.electricityBill) formData.append('document_electricity', pendingListingData.electricityBill);
+        if (pendingListingData.noc) formData.append('document_noc', pendingListingData.noc);
+
+        // Send to Django!
+        await createListing(formData);
+
+        setPendingListingData(null);
+        toast({
+          title: "Listing Submitted for Review!",
+          description: "Your property has been sent to our staff for verification.",
+        });
+        
+        // Optional: Trigger a refetch here so the user immediately sees it in 'My Properties'
+        setTimeout(() => setRateUsModalOpen(true), 500);
+
+    } catch (error) {
+        console.error("Failed to submit listing to Django:", error);
+        toast({
+            title: "Submission Failed",
+            description: "There was an error connecting to the server. Please try again.",
+            variant: "destructive"
+        });
     }
-      const currentMates = getFromLocalStorage('roommates', dummyRoommates);
-      saveToLocalStorage('roommates', [...currentMates, mappedRoommate]);
-    }
-    setPendingListingData(null);
-    toast({
-      title: "Listing Submitted for Review!",
-      description: "Your property is now under review. You will receive a call from our staff for manual verification shortly.",
-    });
-    setTimeout(() => setRateUsModalOpen(true), 500);
-  };
+};
   
   const handleChat = (name: string) => {
     setChattingWith(name);
@@ -448,22 +445,6 @@ export default function Home() {
     setInquiryData({ listing, bed });
     setIsBookingModalOpen(true);
     setSelectedItem(null); 
-  };
-  
-  const handleCheckAvailability = (listing: Listing) => {
-    toast({
-      title: "Inquiry Sent!",
-      description: "The owner has been notified of your availability request.",
-    });
-    
-    const newInquiry: Inquiry = {
-        id: `inq_${Date.now()}`,
-        propertyId: listing.id,
-        propertyTitle: listing.title,
-        userName: 'A Potential Tenant', 
-        time: new Date(),
-    };
-    setAvailabilityInquiries(prev => [...prev, newInquiry]);
   };
 
   const handleLoginSuccess = () => {
@@ -610,7 +591,6 @@ export default function Home() {
                 activePage === 'liked-properties' ? 'My Liked Properties' :
                 undefined
               }
-              inquiries={activePage === 'my-properties' ? availabilityInquiries.filter(inq => myProperties.some(p => p.id === inq.propertyId)) : undefined}
             />
         )}
       </main>
@@ -627,7 +607,6 @@ export default function Home() {
         onUnlock={handleUnlockClick}
         onChat={() => handleChat(selectedItem?.data?.ownerName || 'Owner')}
         onBookInquiry={handleBookInquiry}
-        onCheckAvailability={handleCheckAvailability}
       />
       <RoommateDetails
         profile={selectedItem?.type === 'roommate' ? selectedItem.data as RoommateProfile : null}

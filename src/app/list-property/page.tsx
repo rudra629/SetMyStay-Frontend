@@ -48,7 +48,18 @@ export default function ListPropertyPage() {
 
       payload.append('owner_name', formData.owner_name);
       payload.append('phone_primary', formData.phone_primary);
-      payload.append('phone_secondary', formData.phone_secondary);
+      
+      if (formData.phone_secondary) {
+        payload.append('phone_secondary', formData.phone_secondary);
+      }
+
+      // 👇 THE MISSING PIECE: ADDING AMENITIES TO THE PAYLOAD 👇
+      if (formData.amenities) {
+        const amenitiesString = Array.isArray(formData.amenities) 
+            ? formData.amenities.join(',') 
+            : formData.amenities;
+        payload.append('amenities_list', amenitiesString);
+      }
 
       // --- CONDITIONAL FIELDS BASED ON TYPE ---
       if (formData.property_type === 'ROOMMATE') {
@@ -68,7 +79,7 @@ export default function ListPropertyPage() {
         });
       }
 
-      // 👇 FIX: Matching the exact keys from your console!
+      // --- DOCUMENTS ---
       const aadharFile = formData.aadhaar_card || formData.aadhaarCard;
       const electricFile = formData.electricity_bill || formData.electricityBill;
       const nocFile = formData.noc;

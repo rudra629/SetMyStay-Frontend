@@ -1874,13 +1874,12 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                                     </div>
                                 </div>
                             )}
-
-                             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground">ID</strong>
                                     <div>{currentItem.id}</div>
                                 </div>
-                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
+                                <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><Briefcase className="w-4 h-4" /> Vendor Number</strong>
                                     <div className="font-mono">{'vendorNumber' in currentItem ? currentItem.vendorNumber || 'N/A' : 'N/A'}</div>
                                 </div>
@@ -1896,35 +1895,72 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                                     <strong className="block text-sm font-medium text-muted-foreground">Status</strong>
                                     <StatusBadge status={currentItem.status} />
                                 </div>
-                                {currentItem.verifiedBy && currentItem.verificationTimestamp && (
-                                    <div className="p-3 bg-slate-50 rounded-md space-y-1">
-                                        <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><CheckCircle className="w-4 h-4"/> Verified By</strong>
-                                        <div>
-                                            {staff.find(s => s.id === currentItem.verifiedBy)?.name || currentItem.verifiedBy} on {format(new Date(currentItem.verificationTimestamp), 'dd MMM yyyy, p')}
-                                        </div>
-                                    </div>
-                                )}
 
                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><UserIcon className="w-4 h-4" /> Owner/User Name</strong>
                                     <div>{currentItem.ownerName}</div>
                                 </div>
+                                
                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><Phone className="w-4 h-4" /> Phone Number</strong>
-                                    <div>{currentItem.contactPhonePrimary}</div>
+                                    <div className="font-medium text-primary">
+                                        {currentItem.contactPhonePrimary !== 'Hidden' && currentItem.contactPhonePrimary ? currentItem.contactPhonePrimary : 'Not Provided'}
+                                    </div>
                                 </div>
+                                
                                 <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Full Address</strong>
-                                    <div>{currentItem.completeAddress}</div>
+                                    <div>{currentItem.completeAddress || currentItem.partialAddress || 'Not Provided'}</div>
                                 </div>
 
-                                {('description' in currentItem && currentItem.description) && (
-                                    <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
-                                        <strong className="block text-sm font-medium text-muted-foreground">Description</strong>
-                                        <div>{currentItem.description}</div>
-                                    </div>
-                                )}
-                            </div>
+                                {/* Description */}
+                                <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
+                                    <strong className="block text-sm font-medium text-muted-foreground">Description</strong>
+                                    <div>{('description' in currentItem && currentItem.description) ? currentItem.description : 'No description provided.'}</div>
+                                </div>
+
+    {/* NEW BULLETPROOF AMENITIES BLOCK */}
+    {('amenities' in currentItem) && (
+        <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
+            <strong className="block text-sm font-medium text-muted-foreground">Amenities</strong>
+            {Array.isArray(currentItem.amenities) && currentItem.amenities.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-1">
+                    {currentItem.amenities.map((amenity: string, index: number) => (
+                        <span key={index} className="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-medium border border-slate-300">
+                            {amenity}
+                        </span>
+                    ))}
+                </div>
+            ) : typeof currentItem.amenities === 'string' && currentItem.amenities.length > 0 ? (
+                <div className="flex flex-wrap gap-2 mt-1">
+                    {currentItem.amenities.split(',').map((amenity: string, index: number) => (
+                        <span key={index} className="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-medium border border-slate-300">
+                            {amenity.trim()}
+                        </span>
+                    ))}
+                </div>
+            ) : (
+                <p className="text-sm text-slate-500 italic">No specific amenities listed.</p>
+            )}
+        </div>
+    )}
+
+    {/* NEW WHATSAPP & CALL BUTTONS FOR ADMIN */}
+    {currentItem.contactPhonePrimary && !currentItem.contactPhonePrimary.includes('Hidden') && (
+        <div className="md:col-span-2 flex flex-col sm:flex-row gap-3 pt-2">
+            <Button className="flex-1 bg-[#25D366] hover:bg-[#128C7E] text-white shadow-sm" asChild>
+                <a href={`https://wa.me/${currentItem.contactPhonePrimary.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                    Chat on WhatsApp
+                </a>
+            </Button>
+            <Button variant="outline" className="flex-1 shadow-sm border-blue-200 text-blue-700 hover:bg-blue-50" asChild>
+                <a href={`tel:${currentItem.contactPhonePrimary.replace(/\D/g, '')}`}>
+                    Call Owner
+                </a>
+            </Button>
+        </div>
+    )}
+</div>
 
                             <div className="flex justify-end space-x-2 pt-4">
                                 <Button variant="outline" onClick={() => setDetailsModalOpen(false)}>Close</Button>

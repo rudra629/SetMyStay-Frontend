@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -7,9 +6,8 @@ import type { Listing, Bed } from '@/lib/types';
 import { DetailsModalWrapper } from './details-modal-wrapper';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
-import { MapPin, IndianRupee, Home, Eye, BedDouble, ChevronLeft, ChevronRight, Lock, MessageSquare, Phone, PlayCircle, Clock, CheckCircle } from 'lucide-react';
+import { MapPin, IndianRupee, Home, BedDouble, ChevronLeft, ChevronRight, Lock, MessageSquare, Phone, Clock, User } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { formatDistanceToNow } from 'date-fns';
 
 interface PropertyDetailsProps {
   listing: Listing | null;
@@ -18,7 +16,6 @@ interface PropertyDetailsProps {
   onUnlock: () => void;
   onChat: () => void;
   onBookInquiry: (listing: Listing, bed: Bed) => void;
-  onCheckAvailability: (listing: Listing) => void;
 }
 
 const amenityIcons: { [key: string]: React.ReactNode } = {
@@ -44,7 +41,6 @@ const MediaGallery = ({ listing, isUnlocked, onUnlock }: { listing: Listing; isU
   const allMedia = [...allImages, ...(listing.videoUrl ? [listing.videoUrl] : [])];
   const hasMoreMedia = allMedia.length > 2;
 
-  // If not unlocked, show only up to 2 images. If there are more media, add a placeholder to unlock.
   const mediaToShow = isUnlocked
     ? allMedia
     : hasMoreMedia
@@ -60,16 +56,15 @@ const MediaGallery = ({ listing, isUnlocked, onUnlock }: { listing: Listing; isU
 
   if (mediaToShow.length === 0) {
     return (
-      <div className="w-full h-80 bg-muted rounded-lg flex items-center justify-center">
-        <p>No media available</p>
+      <div className="w-full h-80 bg-muted rounded-lg flex items-center justify-center border-2 border-dashed">
+        <p className="text-muted-foreground">No media available</p>
       </div>
     );
   }
 
   return (
-    <div className="relative w-full h-80 bg-muted rounded-lg overflow-hidden">
+    <div className="relative w-full h-80 bg-muted rounded-lg overflow-hidden border">
       {mediaToShow.map((src, index) => {
-        // The placeholder slide
         if (src === 'unlock_placeholder') {
           return (
             <div
@@ -80,7 +75,7 @@ const MediaGallery = ({ listing, isUnlocked, onUnlock }: { listing: Listing; isU
                 <Image src={allImages[1]} alt="Blurred background" fill className="object-cover filter blur-md scale-110" />
               )}
               <div className="absolute inset-0 bg-background/80 flex flex-col items-center justify-center rounded-lg text-center p-4">
-                <h3 className="text-lg font-semibold">See All Photos & Videos</h3>
+                <h3 className="text-lg font-semibold text-foreground">See All Photos & Videos</h3>
                 <p className="text-muted-foreground mb-4">Unlock details to view all media for this property.</p>
                 <Button onClick={onUnlock}>
                   <Lock className="w-4 h-4 mr-2" />
@@ -98,7 +93,6 @@ const MediaGallery = ({ listing, isUnlocked, onUnlock }: { listing: Listing; isU
             className={`absolute inset-0 transition-opacity duration-300 ${index === currentIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
             {isVideo ? (
-              // This part is only reachable if isUnlocked is true
               <video src={src as string} controls className="w-full h-full object-contain bg-black" />
             ) : (
               <Image src={src as string} alt={`${listing.title} media ${index + 1}`} fill className="object-cover" />
@@ -121,8 +115,7 @@ const MediaGallery = ({ listing, isUnlocked, onUnlock }: { listing: Listing; isU
   );
 };
 
-
-export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat, onBookInquiry, onCheckAvailability }: PropertyDetailsProps) {
+export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat, onBookInquiry }: PropertyDetailsProps) {
   if (!listing) return null;
 
   const handleBedClick = (bed: Bed) => {
@@ -130,6 +123,13 @@ export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat
         onBookInquiry(listing, bed);
     }
   }
+
+  const rawAmenities = listing.amenities || [];
+  const amenitiesList = Array.isArray(rawAmenities) 
+    ? rawAmenities 
+    : typeof rawAmenities === 'string' 
+      ? (rawAmenities as string).split(',').map(s => s.trim()) 
+      : [];
 
   return (
     <DetailsModalWrapper isOpen={!!listing} onClose={onClose} title={listing.title}>
@@ -140,44 +140,48 @@ export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
             <IndianRupee className="w-6 h-6 text-primary"/>
             <div>
-              <p className="font-semibold text-lg">{listing.rent.toLocaleString()}</p>
+              <p className="font-semibold text-lg">{listing.rent?.toLocaleString() || '0'}</p>
               <p className="text-muted-foreground">/ month</p>
             </div>
           </div>
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
             <Home className="w-6 h-6 text-primary"/>
             <div>
-              <p className="font-semibold text-lg">{listing.size}</p>
-              <p className="text-muted-foreground">{listing.area} sq ft</p>
+              <p className="font-semibold text-lg">{listing.size || 'N/A'}</p>
+              <p className="text-muted-foreground">Area</p>
             </div>
           </div>
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
             <MapPin className="w-6 h-6 text-primary"/>
             <div>
-              <p className="font-semibold text-lg">{listing.locality}</p>
-              <p className="text-muted-foreground">{listing.city}</p>
+              <p className="font-semibold text-lg truncate w-[100px] sm:w-[150px]">{listing.locality || 'N/A'}</p>
+              <p className="text-muted-foreground">{listing.city || 'N/A'}</p>
             </div>
           </div>
         </div>
 
         <div>
           <h3 className="text-lg font-semibold mb-2">Description</h3>
-          <p className="text-muted-foreground">{listing.description}</p>
+          <p className="text-muted-foreground leading-relaxed">{listing.description || 'No description provided.'}</p>
         </div>
 
-        {Array.isArray(listing.amenities) && listing.amenities.length > 0 && (
-          <div>
-            <h3 className="text-lg font-semibold mb-2">Amenities</h3>
+        <div>
+          <h3 className="text-lg font-semibold mb-2">Amenities</h3>
+          {amenitiesList.length > 0 ? (
             <div className="flex flex-wrap gap-2">
-              {listing.amenities.map(amenity => (
-                <Badge key={amenity} variant="secondary" className="text-sm flex items-center gap-2">
-                  <span>{amenityIcons[amenity] || '✅'}</span>
+              {amenitiesList.map((amenity, index) => (
+                <Badge key={index} variant="secondary" className="text-sm flex items-center gap-2 px-3 py-1">
+                  <span>{amenityIcons[amenity] || '✨'}</span>
                   <span>{amenity}</span>
                 </Badge>
               ))}
             </div>
-          </div>
-        )}
+          ) : (
+            <p className="text-sm text-muted-foreground bg-muted/50 p-3 rounded-md border border-dashed">
+              No specific amenities listed for this property.
+            </p>
+          )}
+        </div>
 
         {listing.propertyType === 'PG' && Array.isArray(listing.beds) && listing.beds.length > 0 && (
           <div>
@@ -203,42 +207,54 @@ export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat
           </div>
         )}
         
-        <div className='space-y-4 border-t pt-6'>
-            <Button size="lg" variant="secondary" className="w-full" onClick={() => onCheckAvailability(listing)}>
-                <CheckCircle className="w-5 h-5 mr-2" /> Check Availability
-            </Button>
-            <p className="text-xs text-muted-foreground text-center flex items-center justify-center gap-1.5">
-                <Clock className="w-3 h-3"/>
-                Availability last updated: {formatDistanceToNow(new Date(listing.lastAvailabilityCheck), { addSuffix: true })}
-            </p>
-        </div>
-        
         <div>
           <h3 className="text-lg font-semibold mb-2">Contact Details</h3>
-          <div className="p-4 border rounded-lg relative bg-card">
+          <div className="p-4 border rounded-lg relative bg-card shadow-sm">
             {isUnlocked ? (
-              <div className="space-y-2">
-                <p><strong>Owner:</strong> {listing.ownerName}</p>
-                <p><strong>Primary Phone:</strong> {listing.contactPhonePrimary}</p>
-                {listing.contactPhoneSecondary && <p><strong>Secondary Phone:</strong> {listing.contactPhoneSecondary}</p>}
-                <p><strong>Email:</strong> {listing.contactEmail || 'Not provided'}</p>
-                <p><strong>Address:</strong> {listing.completeAddress}</p>
-                <p className="text-xs text-muted-foreground pt-2">Contact details are visible for 30 days after unlocking.</p>
+              <div className="space-y-3">
+                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+                  <span className="text-muted-foreground w-32 flex items-center gap-2"><User className="w-4 h-4"/> Owner:</span>
+                  <span className="font-medium">{listing.ownerName || 'Not Provided'}</span>
+                </div>
+                
+                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+                  <span className="text-muted-foreground w-32 flex items-center gap-2"><Phone className="w-4 h-4"/> Phone:</span>
+                  <span className="font-medium text-primary">
+                    {listing.contactPhonePrimary || 'Not Provided'}
+                  </span>
+                </div>
+
+                {listing.contactPhoneSecondary && listing.contactPhoneSecondary !== 'Hidden' && (
+                  <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+                    <span className="text-muted-foreground w-32 flex items-center gap-2"><Phone className="w-4 h-4"/> Alt Phone:</span>
+                    <span className="font-medium">{listing.contactPhoneSecondary}</span>
+                  </div>
+                )}
+
+                <div className="flex flex-col sm:flex-row gap-1 sm:gap-4">
+                  <span className="text-muted-foreground w-32 flex items-center gap-2"><MapPin className="w-4 h-4"/> Address:</span>
+                  <span className="font-medium">{listing.completeAddress || listing.partialAddress || 'Not Provided'}</span>
+                </div>
+
+                <div className="mt-4 pt-3 border-t">
+                  <p className="text-xs text-muted-foreground italic flex items-center gap-1">
+                    <Clock className="w-3 h-3" /> Contact details are visible for 30 days after unlocking.
+                  </p>
+                </div>
               </div>
             ) : (
-              <div className="blur-sm select-none">
-                <p><strong>Owner:</strong> ************</p>
-                <p><strong>Primary Phone:</strong> **********</p>
-                <p><strong>Secondary Phone:</strong> **********</p>
-                <p><strong>Email:</strong> *****@*****.com</p>
-                <p><strong>Address:</strong> {listing.partialAddress}</p>
+              <div className="blur-[4px] select-none space-y-3 opacity-60">
+                <div className="flex gap-4"><span className="w-32">Owner:</span><span>**********</span></div>
+                <div className="flex gap-4"><span className="w-32">Phone:</span><span>+91 **********</span></div>
+                <div className="flex gap-4"><span className="w-32">Address:</span><span>{listing.partialAddress}</span></div>
               </div>
             )}
+            
             {!isUnlocked && (
-              <div className="absolute inset-0 bg-background/80 flex items-center justify-center rounded-lg">
-                <Button onClick={onUnlock}>
+              <div className="absolute inset-0 bg-background/40 backdrop-blur-[1px] flex items-center justify-center rounded-lg">
+                <Button onClick={onUnlock} size="lg" className="shadow-lg hover:scale-105 transition-transform">
                   <Lock className="w-4 h-4 mr-2" />
-                  Unlock Details
+                  Unlock Contact Details
                 </Button>
               </div>
             )}
@@ -247,17 +263,32 @@ export function PropertyDetails({ listing, onClose, isUnlocked, onUnlock, onChat
 
         <div className="space-y-4 pt-4 border-t">
             <div className="flex flex-col sm:flex-row gap-4">
-                <Button size="lg" className="flex-1" onClick={onChat} disabled={!isUnlocked}>
-                    <MessageSquare className="w-5 h-5 mr-2" /> Chat with Owner
-                </Button>
-                <a href={`tel:${listing.contactPhonePrimary}`} className="flex-1">
-                    <Button size="lg" variant="outline" className="w-full" disabled={!isUnlocked}>
-                        <Phone className="w-5 h-5 mr-2" /> Call Owner
-                    </Button>
-                </a>
+                {isUnlocked && listing.contactPhonePrimary && !listing.contactPhonePrimary.includes('Hidden') ? (
+                    <>
+                        <Button size="lg" className="flex-1 bg-[#25D366] hover:bg-[#128C7E] text-white shadow-sm" asChild>
+                            <a href={`https://wa.me/${listing.contactPhonePrimary.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                                <MessageSquare className="w-5 h-5 mr-2" /> Chat on WhatsApp
+                            </a>
+                        </Button>
+                        <Button size="lg" variant="outline" className="flex-1 shadow-sm" asChild>
+                            <a href={`tel:${listing.contactPhonePrimary.replace(/\D/g, '')}`}>
+                                <Phone className="w-5 h-5 mr-2" /> Call Owner
+                            </a>
+                        </Button>
+                    </>
+                ) : (
+                    <>
+                        <Button size="lg" className="flex-1 bg-slate-100 text-slate-400" disabled>
+                            <MessageSquare className="w-5 h-5 mr-2" /> WhatsApp Unavailable
+                        </Button>
+                        <Button size="lg" variant="outline" className="flex-1 text-slate-400" disabled>
+                            <Phone className="w-5 h-5 mr-2" /> Call Unavailable
+                        </Button>
+                    </>
+                )}
             </div>
-             <Button size="lg" variant="ghost" className="w-full" onClick={onClose}>
-                Close
+            <Button size="lg" variant="ghost" className="w-full text-muted-foreground hover:text-foreground" onClick={onClose}>
+                Close Details
             </Button>
         </div>
       </div>

@@ -7,6 +7,7 @@ const nextConfig: NextConfig = {
       {
         source: '/(.*)',
         headers: [
+          
           {
             key: 'Cross-Origin-Opener-Policy',
             value: 'same-origin-allow-popups',
@@ -19,6 +20,10 @@ const nextConfig: NextConfig = {
   // Allow external images from these specific domains
   images: {
     remotePatterns: [
+      {
+        protocol: 'https',
+        hostname: 'storage.googleapis.com',
+      },
       {
         protocol: 'https',
         hostname: 'placehold.co',

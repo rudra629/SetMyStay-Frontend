@@ -18,7 +18,6 @@ import { format } from 'date-fns';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { Listing, RoommateProfile, AnyListing } from '@/lib/types';
 
-// 👇 FIX: Import the live Django API calls!
 import { getAdminProperties, updatePropertyStatus, updateRoommateStatus, deleteProperty, deleteRoommate } from '@/lib/api';
 
 export default function StaffDashboard() {
@@ -39,7 +38,6 @@ export default function StaffDashboard() {
         rejected: ''
     });
 
-    // Fetch the live listings directly from Django
     const fetchListings = async () => {
         try {
             const allData = await getAdminProperties();
@@ -84,14 +82,13 @@ export default function StaffDashboard() {
             router.replace('/staff/login');
         } else {
             setIsAuthenticated(true);
-            // Wait for DB data to load before clearing the loading spinner
             fetchListings().finally(() => setIsLoading(false));
         }
     }, [router]);
     
     const handleLogout = () => {
         localStorage.removeItem('staff_authenticated');
-        localStorage.removeItem('access_token'); // Clear the Django JWT
+        localStorage.removeItem('access_token'); 
         router.replace('/staff/login');
     };
     
@@ -123,7 +120,6 @@ export default function StaffDashboard() {
     
     const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
         try {
-            // Push update to Django
             if (type === 'Roommate') {
                 await updateRoommateStatus(id, status);
             } else {
@@ -133,7 +129,6 @@ export default function StaffDashboard() {
             toast({ title: "Status Updated", description: `Listing has been marked as ${status}.` });
             setDetailsModalOpen(false);
             
-            // Instantly sync the UI with the fresh Database state
             fetchListings(); 
         } catch (error) {
             console.error("Update error:", error);
@@ -143,7 +138,6 @@ export default function StaffDashboard() {
 
     const handleDeleteItem = async (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
         try {
-            // Push delete command to Django
             if (type === 'Roommate') {
                 await deleteRoommate(id);
             } else {
@@ -153,7 +147,6 @@ export default function StaffDashboard() {
             toast({ title: "Item Deleted", description: `Listing permanently removed.`, variant: 'destructive' });
             setDetailsModalOpen(false);
             
-            // Instantly sync UI with the fresh Database state
             fetchListings(); 
         } catch (error) {
             console.error("Delete error:", error);
@@ -368,7 +361,7 @@ export default function StaffDashboard() {
                                 </div>
                                 <div className="p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><Phone className="w-4 h-4" /> Phone Number</strong>
-                                    <div>{currentItem.contactPhonePrimary}</div>
+                                    <div>{currentItem.contactPhonePrimary !== 'Hidden' ? currentItem.contactPhonePrimary : 'Not Provided'}</div>
                                 </div>
                                 <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
                                     <strong className="block text-sm font-medium text-muted-foreground flex items-center gap-1.5"><MapPin className="w-4 h-4" /> Full Address</strong>
@@ -379,6 +372,35 @@ export default function StaffDashboard() {
                                     <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
                                         <strong className="block text-sm font-medium text-muted-foreground">Description</strong>
                                         <div>{currentItem.description}</div>
+                                    </div>
+                                )}
+
+                                {('amenities' in currentItem && Array.isArray(currentItem.amenities) && currentItem.amenities.length > 0) && (
+                                    <div className="md:col-span-2 p-3 bg-slate-50 rounded-md space-y-1">
+                                        <strong className="block text-sm font-medium text-muted-foreground">Amenities</strong>
+                                        <div className="flex flex-wrap gap-2 mt-2">
+                                            {currentItem.amenities.map((amenity: string, index: number) => (
+                                                <span key={index} className="bg-slate-200 text-slate-700 px-2 py-1 rounded text-xs font-medium">
+                                                    {amenity}
+                                                </span>
+                                            ))}
+                                        </div>
+                                    </div>
+                                )}
+
+                                {/* Action Buttons for Call and WhatsApp */}
+                                {currentItem.contactPhonePrimary && currentItem.contactPhonePrimary !== 'Hidden' && (
+                                    <div className="md:col-span-2 flex justify-start space-x-2 pt-2 pb-4">
+                                        <Button variant="outline" asChild className="bg-green-50 text-green-700 border-green-200 hover:bg-green-100 hover:text-green-800">
+                                            <a href={`https://wa.me/${currentItem.contactPhonePrimary.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer">
+                                                Chat on WhatsApp
+                                            </a>
+                                        </Button>
+                                        <Button variant="outline" asChild className="bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100 hover:text-blue-800">
+                                            <a href={`tel:${currentItem.contactPhonePrimary.replace(/\D/g, '')}`}>
+                                                Call Owner
+                                            </a>
+                                        </Button>
                                     </div>
                                 )}
                             </div>
