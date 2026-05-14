@@ -78,6 +78,9 @@ export default function ListPropertyPage() {
           payload.append('uploaded_images', file);
         });
       }
+      if (formData.video_file) {
+          payload.append('uploaded_video', formData.video_file);
+      }
 
       // --- DOCUMENTS ---
       const aadharFile = formData.aadhaar_card || formData.aadhaarCard;

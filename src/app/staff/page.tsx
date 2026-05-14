@@ -278,14 +278,23 @@ export default function StaffDashboard() {
                         <div className="space-y-4 max-h-[70vh] overflow-y-auto p-1">
                              {Array.isArray(currentItem.images) && currentItem.images.length > 0 && (
                                 <div className="relative w-full h-64 bg-slate-200 rounded-lg overflow-hidden">
-                                     <Image 
-                                        src={currentItem.images[currentMediaIndex]} 
-                                        alt="Listing Media" 
-                                        fill
-                                        sizes="(max-width: 768px) 100vw, 800px"
-                                        style={{ objectFit: 'contain' }}
-                                        className="p-2"
-                                     />
+                                     {currentItem.images[currentMediaIndex]?.match(/\.(mp4|webm|ogg|mov|mkv|m4v)/i) ? (
+                                            <video 
+                                                src={currentItem.images[currentMediaIndex]} 
+                                                controls 
+                                                controlsList="nodownload"
+                                                className="w-full h-full object-contain bg-black"
+                                            />
+                                        ) : (
+                                            <Image 
+                                                src={currentItem.images[currentMediaIndex]} 
+                                                alt="Listing Media" 
+                                                fill
+                                                sizes="(max-width: 768px) 100vw, 800px"
+                                                style={{ objectFit: 'contain' }}
+                                                className="p-2"
+                                            />
+                                        )}
                                      {currentItem.images.length > 1 && (
                                          <>
                                             <Button size="icon" variant="ghost" className="absolute left-2 top-1/2 -translate-y-1/2 text-white bg-black/30 hover:bg-black/50" onClick={() => setCurrentMediaIndex(i => Math.max(0, i-1))} disabled={currentMediaIndex === 0}><ChevronLeft /></Button>
