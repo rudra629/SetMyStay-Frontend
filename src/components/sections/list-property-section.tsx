@@ -10,7 +10,7 @@ import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form';
-import { UploadCloud, Image as ImageIcon, X, ShieldCheck, Video, Plus, FileText, FileUp, Wifi, Car, Dumbbell, Utensils, Tv, Snowflake, Wind, Droplets, Zap, Users, Shield, VenetianMask, User, BedDouble, Building, Leaf, PawPrint, Sparkles, ArrowBigUpDash, Briefcase } from 'lucide-react';
+import { UploadCloud, X, ShieldCheck, Video, Plus, FileText, FileUp, Wifi, Car, Dumbbell, Utensils, Tv, Snowflake, Wind, Droplets, Zap, Shield, VenetianMask, User, Leaf, PawPrint, Sparkles, ArrowBigUpDash, Briefcase } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import Image from 'next/image';
@@ -20,7 +20,7 @@ import { allIndianCities, indianCitiesByState } from '@/lib/cities';
 import { indianAreas } from '@/lib/areas';
 import { Badge } from '@/components/ui/badge';
 import { ScrollArea } from '@/components/ui/scroll-area';
-import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { useToast } from '@/hooks/use-toast';
 
 const amenitiesList = [
@@ -48,11 +48,10 @@ const amenityIcons: { [key: string]: React.ElementType } = {
   'AC': Snowflake, 'Wi-Fi': Wifi, 'Parking': Car, 'Gymnasium': Dumbbell, 'Lift/Elevator': ArrowBigUpDash, 'Security': Shield, 'Balcony': VenetianMask, 'Power Backup': Zap, 'In-house Mess': Utensils, 'Washing Machine (Private/Common)': Droplets, 'Housekeeping': Droplets, 'Garden': Wind, 'TV': Tv, 'Refrigerator': Snowflake, 'Attached Bathroom': User, 'Reserved Parking': Car, 'Lift': ArrowBigUpDash, 'Gated Security': Shield, 'Non-Smoker': User, 'Vegetarian': Leaf, 'Pet-Friendly': PawPrint, 'Clean': Sparkles
 };
 
-// 👇 UPDATED: Changed keys to uppercase to match Django
 const topAmenitiesByPropertyType: { [key: string]: string[] } = {
-    'RENTAL': ['AC', 'Wi-Fi', 'Parking', 'Gymnasium', 'Lift/Elevator', 'Security', 'Balcony', 'Power Backup'],
-    'PG': ['AC', 'Wi-Fi', 'In-house Mess', 'Washing Machine (Private/Common)', 'Lift/Elevator', 'Security', 'Power Backup', 'Refrigerator'],
-    'ROOMMATE': ['Non-Smoker', 'Vegetarian', 'Pet-Friendly', 'Lift/Elevator', 'Wi-Fi', 'AC', 'Attached Bathroom', 'Reserved Parking']
+  'RENTAL': ['AC', 'Wi-Fi', 'Parking', 'Gymnasium', 'Lift/Elevator', 'Security', 'Balcony', 'Power Backup'],
+  'PG': ['AC', 'Wi-Fi', 'In-house Mess', 'Washing Machine (Private/Common)', 'Lift/Elevator', 'Security', 'Power Backup', 'Refrigerator'],
+  'ROOMMATE': ['Non-Smoker', 'Vegetarian', 'Pet-Friendly', 'Lift/Elevator', 'Wi-Fi', 'AC', 'Attached Bathroom', 'Reserved Parking']
 };
 
 const ACCEPTED_IMAGE_TYPES = ["image/jpeg", "image/jpg", "image/png", "application/pdf"];
@@ -62,13 +61,7 @@ const fileSchema = z
   .refine((files) => files?.length === 1, "File is required.")
   .refine((files) => ACCEPTED_IMAGE_TYPES.includes(files?.[0]?.type), ".jpg, .jpeg, .png and .pdf files are accepted.");
 
-const videoFileSchema = z
-  .any()
-  .refine((files) => files?.length === 1, "Video tour is required.")
-  .refine((files) => files?.[0]?.type.startsWith("video/"), "Please upload a valid video file.");
-
 const formSchema = z.object({
-  // 👇 UPDATED: Changed enum to exact Django keys
   propertyType: z.enum(['RENTAL', 'PG', 'ROOMMATE']),
   title: z.string().min(5, 'Title must be at least 5 characters'),
   rent: z.coerce.number().min(1000, 'Rent must be at least 1000'),
@@ -77,7 +70,7 @@ const formSchema = z.object({
   city: z.string().min(1, 'City is required'),
   locality: z.string().min(1, 'Area / Locality is required'),
   sector: z.string().optional(),
-  address: z.string().min(10, 'Full address is required'),
+  address: z.string().optional(),
   ownerName: z.string().min(2, 'Name is required'),
   phonePrimary: z.string().refine((val) => /^\d{10}$/.test(val), {
     message: "Primary phone number must be 10 digits.",
@@ -91,12 +84,30 @@ const formSchema = z.object({
   aadhaarCard: fileSchema,
   electricityBill: fileSchema.optional(),
   noc: z.any().optional(),
-  videoFile: videoFileSchema,
+  videoFile: z.any().optional(),
   vendorNumber: z.string().optional(),
   gender: z.string().optional(),
   roommateStatus: z.enum(['hasProperty', 'needsProperty']).optional(),
 }).superRefine((data, ctx) => {
-    // 👇 UPDATED: Checked against uppercase
+    const isNeedsProperty = data.propertyType === 'ROOMMATE' && data.roommateStatus === 'needsProperty';
+
+    if (!isNeedsProperty) {
+        if (!data.address || data.address.length < 10) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Full address is required.',
+                path: ['address'],
+            });
+        }
+        if (!data.videoFile || data.videoFile.length === 0) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Video tour is required.',
+                path: ['videoFile'],
+            });
+        }
+    }
+
     if (data.propertyType === 'RENTAL' && !data.brokerStatus) {
         ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -124,7 +135,7 @@ const formSchema = z.object({
         if (!data.roommateStatus) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
-                message: 'Please specify if you have a property.',
+                message: 'Please select what you are looking for.',
                 path: ['roommateStatus'],
             });
         }
@@ -200,7 +211,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
-      propertyType: 'RENTAL', // 👇 UPDATED: Changed to RENTAL
+      propertyType: 'RENTAL',
       brokerStatus: 'Without Broker',
       rent: 15000,
       area: 1200,
@@ -214,6 +225,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
       locality: '',
       sector: '',
       roommateStatus: undefined,
+      description: '',
     },
   });
   
@@ -236,7 +248,6 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
   }, [cityValue, form]);
 
   useEffect(() => {
-    // 👇 UPDATED
     if (propertyType !== 'ROOMMATE') {
         form.setValue('roommateStatus', undefined);
     }
@@ -248,21 +259,18 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
     }
   }, [propertyType, roommateStatus, form]);
 
-const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
+  const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
     if (mediaFiles.length === 0) {
         toast({
             title: "Photos Required",
-            description: "Please upload at least one photo of your property.",
+            description: data.propertyType === 'ROOMMATE' && data.roommateStatus === 'needsProperty' ? "Please upload at least one profile photo." : "Please upload at least one photo of your property.",
             variant: "destructive",
         });
         return;
     }
     
-    // ---------------------------------------------------------
-    // THE TRANSLATION LAYER: React (CamelCase) -> Django (Snake_case)
-    // ---------------------------------------------------------
     const finalData: any = { 
-        property_type: data.propertyType, // 👈 Fixed!
+        property_type: data.propertyType,
         title: data.title,
         rent: data.rent,
         area: data.area,
@@ -270,29 +278,21 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
         city: data.city,
         locality: data.locality,
         sector: data.sector || '',
-        address: data.address,
+        address: data.address || '',
         owner_name: data.ownerName,
         phone_primary: data.phonePrimary,
         phone_secondary: data.phoneSecondary || '',
         description: data.description || '',
         vendor_number: data.vendorNumber || '',
-        
-        // Convert array to string for FormData (if needed by your Django setup)
         amenities: JSON.stringify(data.amenities || []), 
-        
-        // Rental Specific Mapping
         is_broker: data.brokerStatus === 'With Broker',
-        
-        // Roommate Specific Mapping 👈 Fixed!
         gender_preference: data.gender || '',
         sharing_status: data.roommateStatus === 'hasProperty' ? 'Living in' : (data.roommateStatus === 'needsProperty' ? 'Moving soon' : ''),
-
-        // Files
         images: mediaFiles,
-        video_file: data.videoFile?.[0], // Ensure backend expects 'video_file'
+        video_file: data.videoFile?.[0] || null,
         aadhaar_card: data.aadhaarCard?.[0],
-        electricity_bill: data.electricityBill?.[0],
-        noc: data.noc?.[0],
+        electricity_bill: data.electricityBill?.[0] || null,
+        noc: data.noc?.[0] || null,
     };
 
     onSubmit(finalData);
@@ -351,7 +351,6 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                     <Select onValueChange={field.onChange} defaultValue={field.value}>
                       <FormControl><SelectTrigger><SelectValue /></SelectTrigger></FormControl>
                       <SelectContent>
-                        {/* 👇 UPDATED: Changed values to uppercase */}
                         <SelectItem value="RENTAL">Rental (BHK/House)</SelectItem>
                         <SelectItem value="PG">PG / Co-living</SelectItem>
                         <SelectItem value="ROOMMATE">Looking for Roommate</SelectItem>
@@ -363,7 +362,7 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                 {propertyType === 'ROOMMATE' && (
                     <FormField control={form.control} name="roommateStatus" render={({ field }) => (
                         <FormItem className="space-y-3">
-                            <FormLabel>Do you have a property to share?</FormLabel>
+                            <FormLabel>What are you looking for?</FormLabel>
                             <FormControl>
                                 <RadioGroup
                                     onValueChange={field.onChange}
@@ -372,11 +371,11 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                                 >
                                     <FormItem className="flex items-center space-x-2 space-y-0">
                                         <FormControl><RadioGroupItem value="hasProperty" /></FormControl>
-                                        <FormLabel className="font-normal">Yes, living in property</FormLabel>
+                                        <FormLabel className="font-normal">Roommate (I have a place)</FormLabel>
                                     </FormItem>
                                     <FormItem className="flex items-center space-x-2 space-y-0">
                                         <FormControl><RadioGroupItem value="needsProperty" /></FormControl>
-                                        <FormLabel className="font-normal">Going with a month</FormLabel>
+                                        <FormLabel className="font-normal">A property (I need a place)</FormLabel>
                                     </FormItem>
                                 </RadioGroup>
                             </FormControl>
@@ -386,10 +385,14 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                 )}
 
                 <FormField control={form.control} name="title" render={({ field }) => (
-                  <FormItem><FormLabel>Property Title / Your Tagline</FormLabel><FormControl><Input placeholder="e.g., Spacious 2BHK Apartment" {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem>
+                    <FormLabel>{propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' ? 'Profile Title / Tagline' : 'Property Title / Your Tagline'}</FormLabel>
+                    <FormControl><Input placeholder={propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' ? "e.g., Working professional looking for clean flatmates" : "e.g., Spacious 2BHK Apartment"} {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
                 )}/>
                 <FormField control={form.control} name="rent" render={({ field }) => (
-                  <FormItem><FormLabel>Monthly Rent / Budget (₹)</FormLabel><FormControl><Input type="number" placeholder="25000" {...field} /></FormControl><FormMessage /></FormItem>
+                  <FormItem><FormLabel>{propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' ? 'Target Budget (₹)' : 'Monthly Rent (₹)'}</FormLabel><FormControl><Input type="number" placeholder="15000" {...field} /></FormControl><FormMessage /></FormItem>
                 )}/>
                 <FormField control={form.control} name="area" render={({ field }) => (
                   <FormItem><FormLabel>Area (sq ft)</FormLabel><FormControl><Input type="number" placeholder="1200" {...field} /></FormControl><FormMessage /></FormItem>
@@ -436,13 +439,31 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                     </FormItem>
                   )}/>
                 )}
+
+                <div className="md:col-span-2">
+                    <FormField control={form.control} name="description" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>{propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' ? 'About You' : 'Property Description'}</FormLabel>
+                            <FormControl>
+                                <Textarea 
+                                    placeholder={propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' 
+                                        ? "Tell potential flatmates a bit about yourself, your habits, food choices, routine..." 
+                                        : "Describe the property, nearby landmarks, security, and key features..."} 
+                                    className="min-h-[100px]"
+                                    {...field} 
+                                />
+                            </FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}/>
+                </div>
               </CardContent>
             </Card>
 
             <Card>
                 <CardHeader>
                     <CardTitle>Amenities</CardTitle>
-                    <CardDescription>Select all the amenities that apply, or search for more options.</CardDescription>
+                    <CardDescription>Select all preferences or facilities that apply.</CardDescription>
                 </CardHeader>
                 <CardContent>
                     <FormField
@@ -459,10 +480,7 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                                             control={form.control}
                                             name="amenities"
                                             render={({ field }) => (
-                                                <FormItem
-                                                    key={amenity}
-                                                    className="flex-1"
-                                                >
+                                                <FormItem key={amenity} className="flex-1">
                                                     <FormControl>
                                                         <Checkbox
                                                             checked={field.value?.includes(amenity)}
@@ -487,14 +505,14 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                                                 </FormItem>
                                             )}
                                         />
-                                      )
+                                      );
                                   })}
                                 </div>
                                 <div className="mt-6">
-                                  <FormLabel>Search for more amenities</FormLabel>
+                                  <FormLabel>Search for more options</FormLabel>
                                   <div className="flex gap-2 mt-2">
                                       <AutocompleteInput 
-                                        placeholder="e.g., Piped Gas"
+                                        placeholder="e.g., Piped Gas, Non-Smoker"
                                         value={customAmenity}
                                         onChange={setCustomAmenity}
                                         suggestions={amenitiesList.filter(a => !selectedAmenities.includes(a))}
@@ -507,7 +525,7 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
 
                                 {selectedAmenities.length > 0 && (
                                     <div className="mt-4 pt-4 border-t">
-                                        <h4 className="text-sm font-medium mb-2">Selected Amenities:</h4>
+                                        <h4 className="text-sm font-medium mb-2">Selected Selections:</h4>
                                         <ScrollArea className="h-40">
                                             <div className="flex flex-wrap gap-2">
                                                 {selectedAmenities.map((amenity) => (
@@ -522,7 +540,6 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                                         </ScrollArea>
                                     </div>
                                 )}
-
                                 <FormMessage />
                             </FormItem>
                         )}
@@ -532,8 +549,12 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
 
             <Card>
               <CardHeader>
-                <CardTitle>Photo & Video Upload</CardTitle>
-                <CardDescription>Add up to 8 photos and a mandatory video tour.</CardDescription>
+                <CardTitle>{propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' ? "Profile Photos" : "Photo & Video Upload"}</CardTitle>
+                <CardDescription>
+                    {propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' 
+                        ? "Add up to 8 photos of yourself to display on your profile canvas." 
+                        : "Add up to 8 photos and a mandatory video tour."}
+                </CardDescription>
               </CardHeader>
               <CardContent>
                  <div className="mb-6">
@@ -544,7 +565,7 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                     >
                       <UploadCloud className="mx-auto h-12 w-12 text-muted-foreground"/>
                       <p className="mt-4 text-sm text-muted-foreground">Drag & drop or click to upload photos</p>
-                       <p className="text-xs text-muted-foreground mt-1">{mediaFiles.length}/8 photos uploaded</p>
+                      <p className="text-xs text-muted-foreground mt-1">{mediaFiles.length}/8 uploads completed</p>
                       <Input 
                         id="media-upload" 
                         type="file" multiple 
@@ -568,42 +589,50 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                     )}
                 </div>
 
-                <div>
-                    <FormField
-                        control={form.control}
-                        name="videoFile"
-                        render={({ field: { onChange, onBlur, name, ref } }) => (
-                            <FormItem>
-                                <FormLabel>Video Tour (Required)</FormLabel>
-                                <FormControl>
-                                    <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center cursor-pointer hover:border-primary" onClick={() => document.getElementById('video-upload')?.click()}>
-                                        <Video className="mx-auto h-12 w-12 text-muted-foreground"/>
-                                        <p className="mt-4 text-sm text-muted-foreground">
-                                            {form.getValues('videoFile')?.[0]?.name || 'Click to upload video file'}
-                                        </p>
-                                        <Input
-                                            id="video-upload"
-                                            type="file"
-                                            accept="video/*"
-                                            className="hidden"
-                                            onBlur={onBlur}
-                                            name={name}
-                                            onChange={(e) => onChange(e.target.files)}
-                                            ref={ref}
-                                        />
-                                    </div>
-                                </FormControl>
-                                <FormMessage />
-                            </FormItem>
-                        )}
-                    />
-                </div>
+                {/* Video Tour Row - Completely hidden when looking for a property */}
+                {!(propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty') && (
+                    <div>
+                        <FormField
+                            control={form.control}
+                            name="videoFile"
+                            render={({ field: { onChange, onBlur, name, ref } }) => (
+                                <FormItem>
+                                    <FormLabel>Video Tour (Required)</FormLabel>
+                                    <FormControl>
+                                        <div className="border-2 border-dashed border-muted rounded-lg p-8 text-center cursor-pointer hover:border-primary" onClick={() => document.getElementById('video-upload')?.click()}>
+                                            <Video className="mx-auto h-12 w-12 text-muted-foreground"/>
+                                            <p className="mt-4 text-sm text-muted-foreground">
+                                                {form.getValues('videoFile')?.[0]?.name || 'Click to upload video file'}
+                                            </p>
+                                            <Input
+                                                id="video-upload"
+                                                type="file"
+                                                accept="video/*"
+                                                className="hidden"
+                                                onBlur={onBlur}
+                                                name={name}
+                                                onChange={(e) => onChange(e.target.files)}
+                                                ref={ref}
+                                            />
+                                        </div>
+                                    </FormControl>
+                                    <FormMessage />
+                                </FormItem>
+                            )}
+                        />
+                    </div>
+                )}
               </CardContent>
             </Card>
 
              <Card>
               <CardHeader>
-                <CardTitle>Location</CardTitle>
+                <CardTitle>Location Details</CardTitle>
+                <CardDescription>
+                    {propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty' 
+                        ? "Select the details of the targeted areas where you are hunting for a room." 
+                        : "Specify the exact address markers where the space resides."}
+                </CardDescription>
               </CardHeader>
               <CardContent className="grid md:grid-cols-2 gap-6">
                  <FormField control={form.control} name="state" render={({ field }) => (
@@ -660,11 +689,15 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                         <FormMessage />
                     </FormItem>
                   )}/>
-                  <div className="md:col-span-2">
-                    <FormField control={form.control} name="address" render={({ field }) => (
-                      <FormItem><FormLabel>Full Address</FormLabel><FormControl><Textarea placeholder="Enter complete address..." {...field} /></FormControl><FormMessage /></FormItem>
-                    )}/>
-                  </div>
+                  
+                  {/* Full Address Block - Hidden when checking for property profiles */}
+                  {!(propertyType === 'ROOMMATE' && roommateStatus === 'needsProperty') && (
+                      <div className="md:col-span-2">
+                        <FormField control={form.control} name="address" render={({ field }) => (
+                          <FormItem><FormLabel>Full Address</FormLabel><FormControl><Textarea placeholder="Enter complete flat layout registry details..." {...field} /></FormControl><FormMessage /></FormItem>
+                        )}/>
+                      </div>
+                  )}
               </CardContent>
             </Card>
             
@@ -714,7 +747,6 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
               <CardContent className="grid md:grid-cols-2 gap-6">
                  <FileUploadField name="aadhaarCard" label="Aadhaar Card" control={form.control} required inputRef={aadhaarRef} />
                  
-                 {/* 👇 UPDATED */}
                  {(propertyType === 'RENTAL' || propertyType === 'PG' || (propertyType === 'ROOMMATE' && roommateStatus === 'hasProperty')) && (
                     <FileUploadField name="electricityBill" label="Electricity Bill" control={form.control} required inputRef={electricityBillRef}/>
                  )}
@@ -726,7 +758,7 @@ const handleFormSubmit: SubmitHandler<FormValues> = (data) => {
                            <ShieldCheck className="h-4 w-4" />
                            <AlertTitle>Boost Your Listing!</AlertTitle>
                            <AlertDescription>
-                             Uploading a No Objection Certificate (NOC) is optional, but it significantly increases trust and can help boost your property's visibility.
+                             Uploading a No Objection Certificate (NOC) increases validation speed and property visibility rankings.
                            </AlertDescription>
                          </Alert>
                     </div>
