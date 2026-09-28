@@ -47,7 +47,10 @@ const adaptPropertyToListing = (data: any): Listing => {
     contactPhoneSecondary: data.phone_secondary || undefined,
     description: data.description,
     furnishedStatus: data.furnishing || 'Unfurnished',
-    amenities: data.amenities ? data.amenities.map((a: any) => a.name) : [],
+    
+    // 👇 FIX: Regex strips the [, ], and " characters from the corrupted database strings
+    amenities: data.amenities ? data.amenities.map((a: any) => a.name.replace(/[\[\]"]/g, '').trim()).filter(Boolean) : [],
+    
     size: data.sq_ft ? `${data.sq_ft} sq ft` : 'N/A',
     images: data.images ? data.images.map((img: any) => img.image_url) : [],
     views: 0,
@@ -87,17 +90,12 @@ const adaptRoommateToProfile = (data: any): RoommateProfile => {
     views: 0,
     ownerId: data.user?.toString() || '1',
     hasProperty: false,
-    submittedAt: data.created_at || '2025-01-01', // Grab real date if available
-    
-    // 👇 FIX: Map the actual status from Django instead of hardcoding it
+    submittedAt: data.created_at || '2025-01-01',
     status: data.status === 'APPROVED' ? 'approved' : data.status === 'REJECTED' ? 'rejected' : 'pending',
-    
-    
   };
 };
 
 // --- API CALLS ---
-
 export const getProperties = async (): Promise<Listing[]> => {
   try {
     const response = await api.get('/properties/');
@@ -111,7 +109,6 @@ export const getProperties = async (): Promise<Listing[]> => {
 
 export const getAdminProperties = async (): Promise<Listing[]> => {
   try {
-    // Notice the ?admin=true tag!
     const response = await api.get('/properties/?admin=true');
     const rawData = response.data.results ? response.data.results : response.data;
     return rawData.map(adaptPropertyToListing);
@@ -203,7 +200,6 @@ export const deleteProperty = async (id: string) => {
   }
 };
 
-// 👇 ADDED MISSING ROOMMATE FUNCTIONS FOR STAFF 👇
 export const updateRoommateStatus = async (id: string, newStatus: string) => {
   try {
     const response = await api.patch(`/roommates/${id}/`, { status: newStatus.toUpperCase() });
@@ -224,17 +220,57 @@ export const deleteRoommate = async (id: string) => {
   }
 };
 
-// --- RESPONSE INTERCEPTOR ---
+// --- RESPONSE INTERCEPTOR (WITH AUTO-REFRESH) ---
 api.interceptors.response.use(
   (response) => response,
-  (error) => {
-    if (error.response && error.response.status === 401) {
-      if (typeof window !== 'undefined') {
-        localStorage.removeItem('access_token');
-        localStorage.removeItem('refresh_token');
-        localStorage.removeItem('setmystay_isLoggedIn');
+  async (error) => {
+    const originalRequest = error.config;
+
+    // If the error is 401 Unauthorized, and we haven't tried to refresh yet
+    if (error.response && error.response.status === 401 && !originalRequest._retry) {
+      originalRequest._retry = true;
+
+      try {
+        const refreshToken = localStorage.getItem('refresh_token');
+        if (refreshToken) {
+          // Request a new access token using standard axios (to avoid infinite interceptor loops)
+          const refreshResponse = await axios.post(`${API_URL}/auth/refresh/`, {
+            refresh: refreshToken,
+          });
+
+          const newAccessToken = refreshResponse.data.access;
+          
+          // Save the new token
+          localStorage.setItem('access_token', newAccessToken);
+          
+          // If the backend also rotated the refresh token, save that too
+          if (refreshResponse.data.refresh) {
+             localStorage.setItem('refresh_token', refreshResponse.data.refresh);
+          }
+
+          // Update the failed request's header with the new token
+          originalRequest.headers.Authorization = `Bearer ${newAccessToken}`;
+          
+          // Retry the original request seamlessly
+          return api(originalRequest);
+        }
+      } catch (refreshError) {
+        // If the refresh token is ALSO expired, force a hard logout
+        if (typeof window !== 'undefined') {
+          localStorage.removeItem('access_token');
+          localStorage.removeItem('refresh_token');
+          localStorage.removeItem('setmystay_isLoggedIn');
+          localStorage.removeItem('admin_authenticated');
+          window.location.href = '/admin/login'; 
+        }
       }
     }
+    
+    // Log if the user's token is valid, but they aren't an admin (403 Forbidden)
+    if (error.response && error.response.status === 403) {
+        console.error("403 Forbidden: The logged-in account does not have is_staff=True in Django.");
+    }
+
     return Promise.reject(error);
   }
 );
@@ -267,6 +303,9 @@ export const getStaff = async () => {
     id: s.id.toString(),
     name: s.first_name || s.username, // Fallback to username if name is empty
     userId: s.username,
+    approved_count: s.approved_count,
+    rejected_count: s.rejected_count,
+    avg_processing_hours: s.avg_processing_hours,
   }));
 };
 export const createStaff = async (data: any) => {
@@ -279,4 +318,26 @@ export const deleteStaff = async (id: string) => {
     return await api.delete(`/staff/${id}/`);
 };
 
+export interface PurchaseRecord {
+  id: string;
+  user_name: string;
+  user_email: string;
+  plan_name: string;
+  amount: string;
+  razorpay_payment_id: string;
+  created_at: string;
+  status: string;
+}
+
+export const getMyPurchases = async (): Promise<PurchaseRecord[]> => {
+  const response = await api.get('/payments/my-history/');
+  return response.data.results ? response.data.results : response.data;
+};
+
+export const getAllPurchasesAdmin = async (): Promise<PurchaseRecord[]> => {
+  const response = await api.get('/payments/all-history/');
+  return response.data.results ? response.data.results : response.data;
+};
+
 export default api;
+

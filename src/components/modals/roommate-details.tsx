@@ -1,4 +1,3 @@
-
 "use client";
 
 import React, { useState } from 'react';
@@ -26,7 +25,6 @@ const preferenceIcons: { [key: string]: React.ReactNode } = {
   'Pet-Friendly': '🐾',
 };
 
-
 const MediaGallery = ({ profile }: { profile: RoommateProfile }) => {
     const [currentIndex, setCurrentIndex] = useState(0);
     const media = profile.images || [];
@@ -49,7 +47,12 @@ const MediaGallery = ({ profile }: { profile: RoommateProfile }) => {
             key={index}
             className={`absolute inset-0 transition-opacity duration-300 ${index === currentIndex ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
           >
-            <Image src={src} alt={`${profile.ownerName} media ${index + 1}`} fill className="object-cover" />
+            {/* Cloud Video Support */}
+            {src.match(/\.(mp4|webm|ogg|mov|mkv|m4v)/i) ? (
+                 <video src={src as string} controls controlsList="nodownload" className="w-full h-full object-contain bg-black" />
+             ) : (
+                <Image src={src as string} alt={`${profile.ownerName} media ${index + 1}`} fill className="object-cover" />
+             )}
           </div>
         ))}
         {media.length > 1 && (
@@ -66,9 +69,37 @@ const MediaGallery = ({ profile }: { profile: RoommateProfile }) => {
     );
   };
   
-
 export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat }: RoommateDetailsProps) {
   if (!profile) return null;
+
+  // 👇 Robust parsing to fix the ["Amenities"] formatting bug
+  let preferencesList: string[] = [];
+  if (profile.preferences) {
+      if (Array.isArray(profile.preferences)) {
+          // If Django sent an array containing a single stringified JSON array
+          if (profile.preferences.length === 1 && typeof profile.preferences[0] === 'string' && profile.preferences[0].startsWith('[')) {
+              try {
+                  preferencesList = JSON.parse(profile.preferences[0]);
+              } catch (e) {
+                  preferencesList = profile.preferences;
+              }
+          } else {
+              preferencesList = profile.preferences;
+          }
+      } else if (typeof profile.preferences === 'string') {
+          try {
+              if (profile.preferences.startsWith('[')) {
+                  preferencesList = JSON.parse(profile.preferences);
+              } else {
+                  preferencesList = profile.preferences.split(',').map(s => s.trim());
+              }
+          } catch (e) {
+              preferencesList = profile.preferences.split(',').map(s => s.trim());
+          }
+      }
+  }
+  // Fallback cleanup to strip out any remaining quotes or brackets
+  preferencesList = preferencesList.map(pref => pref.replace(/["\[\]]/g, '').trim());
 
   return (
     <DetailsModalWrapper isOpen={!!profile} onClose={onClose} title={`${profile.ownerName}'s Profile`}>
@@ -79,15 +110,15 @@ export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
             <IndianRupee className="w-6 h-6 text-primary"/>
             <div>
-              <p className="font-semibold text-lg">{profile.rent.toLocaleString()}</p>
-              <p className="text-muted-foreground">Monthly Rent</p>
+              <p className="font-semibold text-lg">{profile.rent?.toLocaleString()}</p>
+              <p className="text-muted-foreground">{profile.hasProperty ? 'Monthly Rent' : 'Target Budget'}</p>
             </div>
           </div>
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
             <Cake className="w-6 h-6 text-primary"/>
             <div>
-              <p className="font-semibold text-lg">{profile.age} years</p>
-              <p className="text-muted-foreground">{profile.gender}</p>
+              <p className="font-semibold text-lg">{profile.age || 'N/A'} years</p>
+              <p className="text-muted-foreground">{profile.gender || 'Any'}</p>
             </div>
           </div>
           <div className="p-4 bg-muted rounded-lg flex items-center gap-3">
@@ -101,14 +132,14 @@ export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat
 
         <div>
           <h3 className="text-lg font-semibold mb-2">About Me</h3>
-          <p className="text-muted-foreground">{profile.description}</p>
+          <p className="text-muted-foreground">{profile.description || 'No description provided.'}</p>
         </div>
 
-        {Array.isArray(profile.preferences) && profile.preferences.length > 0 && (
+        {preferencesList.length > 0 && (
           <div>
             <h3 className="text-lg font-semibold mb-2">Lifestyle Preferences</h3>
             <div className="flex flex-wrap gap-2">
-              {profile.preferences.map(preference => (
+              {preferencesList.map(preference => (
                 <Badge key={preference} variant="secondary" className="text-sm flex items-center gap-2">
                   <span>{preferenceIcons[preference] || '👍'}</span>
                   <span>{preference}</span>
@@ -127,6 +158,12 @@ export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat
                 <p><strong>Primary Phone:</strong> {profile.contactPhonePrimary}</p>
                 {profile.contactPhoneSecondary && <p><strong>Secondary Phone:</strong> {profile.contactPhoneSecondary}</p>}
                 <p><strong>Email:</strong> {profile.contactEmail || 'Not provided'}</p>
+                
+                {/* 👇 FIX: Show Full Address if they HAVE a property */}
+                {profile.hasProperty && profile.completeAddress && (
+                    <p><strong>Property Address:</strong> {profile.completeAddress}</p>
+                )}
+                
                  <p className="text-xs text-muted-foreground pt-2">Contact details are visible for 30 days after unlocking.</p>
               </div>
             ) : (
@@ -135,6 +172,7 @@ export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat
                 <p><strong>Primary Phone:</strong> **********</p>
                 <p><strong>Secondary Phone:</strong> **********</p>
                 <p><strong>Email:</strong> *****@*****.com</p>
+                {profile.hasProperty && <p><strong>Property Address:</strong> ********************</p>}
               </div>
             )}
             {!isUnlocked && (
@@ -149,11 +187,11 @@ export function RoommateDetails({ profile, onClose, isUnlocked, onUnlock, onChat
         </div>
 
         <div className="flex flex-col sm:flex-row gap-4">
-          <Button size="lg" className="flex-1" onClick={onChat} disabled={!isUnlocked}>
-            <MessageSquare className="w-5 h-5 mr-2" /> Chat
+          <Button size="lg" className="flex-1 bg-[#25D366] hover:bg-[#128C7E] text-white" onClick={onChat} disabled={!isUnlocked}>
+            <MessageSquare className="w-5 h-5 mr-2" /> Chat on WhatsApp
           </Button>
-          <a href={`tel:${profile.contactPhonePrimary}`} className="flex-1">
-            <Button size="lg" variant="outline" className="w-full" disabled={!isUnlocked}>
+          <a href={`tel:${profile.contactPhonePrimary}`} className="flex-1 pointer-events-none">
+            <Button size="lg" variant="outline" className="w-full pointer-events-auto" disabled={!isUnlocked}>
                 <Phone className="w-5 h-5 mr-2" /> Call
             </Button>
           </a>

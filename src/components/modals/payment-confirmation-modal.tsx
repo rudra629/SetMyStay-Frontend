@@ -1,4 +1,3 @@
-
 "use client";
 
 import { useState, useMemo } from 'react';
@@ -7,15 +6,14 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { IndianRupee, Tag, CheckCircle, XCircle, Info } from "lucide-react";
+import { IndianRupee, XCircle, Info } from "lucide-react";
 import type { Coupon } from "@/lib/types";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-
 
 interface PaymentConfirmationModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onConfirm: () => void;
+  onConfirm: (finalAmount: number) => void; // 👈 Updated to pass the final amount back
   planName: string;
   amount: number;
   availableCoupons: Coupon[];
@@ -52,7 +50,6 @@ export function PaymentConfirmationModal({ isOpen, onClose, onConfirm, planName,
   }, [amount, appliedCoupon]);
   
   const isListingPlan = planName.toLowerCase().includes('listing');
-
 
   if (!isOpen) return null;
 
@@ -126,7 +123,8 @@ export function PaymentConfirmationModal({ isOpen, onClose, onConfirm, planName,
         </div>
         <DialogFooter className="flex-col gap-2 sm:flex-row">
             <Button variant="outline" onClick={onClose} className="w-full sm:w-auto">Cancel</Button>
-            <Button onClick={onConfirm} className="w-full sm:w-auto">Pay ₹{finalAmount}</Button>
+            {/* 👇 Pass finalAmount back to UnlockDetailsModal when clicked 👇 */}
+            <Button onClick={() => onConfirm(finalAmount)} className="w-full sm:w-auto">Pay ₹{finalAmount}</Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

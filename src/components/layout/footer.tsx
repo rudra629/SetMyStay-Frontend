@@ -94,7 +94,7 @@ export function Footer({ onNavigate }: FooterProps) {
 
         <div className="mt-12 border-t border-slate-700 pt-8 text-center text-sm">
           {isMounted && <p>&copy; {new Date().getFullYear()} SetMyStay. All rights reserved.</p>}
-          <p className="text-xs text-slate-400 mt-2">Designed by Horcrux</p>
+          <p className="text-xs text-slate-400 mt-2">Developed & Designed by Kelvora</p>
         </div>
       </div>
     </footer>

@@ -66,6 +66,7 @@ const formSchema = z.object({
   title: z.string().min(5, 'Title must be at least 5 characters'),
   rent: z.coerce.number().min(1000, 'Rent must be at least 1000'),
   area: z.coerce.number().min(50, 'Area must be at least 50 sq ft'),
+  age: z.coerce.number().min(18, 'Must be at least 18 years old').max(99, 'Invalid age').optional(),
   state: z.string().min(1, 'State is required'),
   city: z.string().min(1, 'City is required'),
   locality: z.string().min(1, 'Area / Locality is required'),
@@ -125,6 +126,13 @@ const formSchema = z.object({
         }
     }
     if (data.propertyType === 'ROOMMATE') {
+      if (!data.age) {
+            ctx.addIssue({
+                code: z.ZodIssueCode.custom,
+                message: 'Age is required for roommate profiles.',
+                path: ['age'],
+            });
+        }
         if (!data.gender) {
             ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -139,6 +147,7 @@ const formSchema = z.object({
                 path: ['roommateStatus'],
             });
         }
+        
         if (data.roommateStatus === 'hasProperty' && !data.electricityBill) {
              ctx.addIssue({
                 code: z.ZodIssueCode.custom,
@@ -265,6 +274,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
             title: "Photos Required",
             description: data.propertyType === 'ROOMMATE' && data.roommateStatus === 'needsProperty' ? "Please upload at least one profile photo." : "Please upload at least one photo of your property.",
             variant: "destructive",
+            
         });
         return;
     }
@@ -289,6 +299,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
         gender_preference: data.gender || '',
         sharing_status: data.roommateStatus === 'hasProperty' ? 'Living in' : (data.roommateStatus === 'needsProperty' ? 'Moving soon' : ''),
         images: mediaFiles,
+        age: data.age,
         video_file: data.videoFile?.[0] || null,
         aadhaar_card: data.aadhaarCard?.[0],
         electricity_bill: data.electricityBill?.[0] || null,
@@ -360,6 +371,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                 )}/>
 
                 {propertyType === 'ROOMMATE' && (
+                  
                     <FormField control={form.control} name="roommateStatus" render={({ field }) => (
                         <FormItem className="space-y-3">
                             <FormLabel>What are you looking for?</FormLabel>
@@ -399,6 +411,14 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                 )}/>
                 
                 {propertyType === 'ROOMMATE' && (
+                  <>
+                    <FormField control={form.control} name="age" render={({ field }) => (
+                        <FormItem>
+                            <FormLabel>Age</FormLabel>
+                            <FormControl><Input type="number" placeholder="e.g., 25" {...field} /></FormControl>
+                            <FormMessage />
+                        </FormItem>
+                    )}/>
                     <FormField control={form.control} name="gender" render={({ field }) => (
                         <FormItem>
                             <FormLabel>Gender</FormLabel>
@@ -413,6 +433,7 @@ export function ListPropertySection({ onSubmit }: ListPropertySectionProps) {
                             <FormMessage />
                         </FormItem>
                     )}/>
+                  </> 
                 )}
                 
                 {propertyType === 'RENTAL' && (

@@ -1,4 +1,3 @@
-
 'use client';
 
 import React, { useState, useEffect, useMemo } from 'react';
@@ -10,10 +9,11 @@ import { Eye, Building, Users, LockOpen, Home, X as XIcon, HelpCircle, CheckCirc
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuLabel, DropdownMenuSeparator, DropdownMenuTrigger } from "@/components/ui/dropdown-menu";
 import { 
     getAdminProperties, updatePropertyStatus, deleteProperty,
-    getCoupons, createCoupon, updateCoupon, deleteCoupon, // 👈 New
-    getAdvertisements, createAdvertisement, updateAdvertisement, deleteAdvertisement, // 👈 New
-    getStaff, createStaff, updateStaff, deleteStaff
-} from '@/lib/api';
+    getCoupons, createCoupon, updateCoupon, deleteCoupon,
+    getAdvertisements, createAdvertisement, updateAdvertisement, deleteAdvertisement,
+    getStaff, createStaff, updateStaff, deleteStaff,
+    getAllPurchasesAdmin // 👈 Added the new API call
+} from '@/lib/api'; // Or '@/lib/apis' depending on your file name
 
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
@@ -40,7 +40,6 @@ import { cn } from '@/lib/utils';
 import { getFromLocalStorage, saveToLocalStorage } from '@/lib/storage';
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 
-
 // Default credentials for the very first run
 const DEFAULT_ADMIN_PASSWORD = 'Bluechip@123';
 const DEFAULT_ADMIN_OTP = '16082007';
@@ -49,7 +48,6 @@ const DEFAULT_ADMIN_ANSWER = 'rohan kholi';
 const DEFAULT_ADMIN_EMAIL = 'setmystay02@gmail.com';
 const DEFAULT_ADMIN_PHONE = '+918210552902';
 const DEFAULT_ADMIN_ADDRESS = 'Office no. 01, Neelsidhi Splendour, Sector 15, CBD Belapur, Navi Mumbai, Maharashtra 400614';
-
 
 // Chart data generation functions
 const generateHourlyData = (date: Date) => {
@@ -301,11 +299,9 @@ const ContactInfoChangeForm = ({ currentEmail, currentPhone, currentAddress, onS
 interface AdFormDialogProps {
     isOpen: boolean;
     onClose: () => void;
-    // 👇 FIX: Allow passing the file
     onSave: (ad: Omit<Advertisement, 'id'>, file: File | null) => void; 
     ad: Advertisement | null;
 }
-
 
 const AdFormDialog = ({ isOpen, onClose, onSave, ad }: AdFormDialogProps) => {
     const { toast } = useToast();
@@ -343,22 +339,12 @@ const AdFormDialog = ({ isOpen, onClose, onSave, ad }: AdFormDialogProps) => {
         }
     };
 
-interface AdFormDialogProps {
-    isOpen: boolean;
-    onClose: () => void;
-    // 👇 FIX: Allow passing the file
-    onSave: (ad: Omit<Advertisement, 'id'>, file: File | null) => void; 
-    ad: Advertisement | null;
-}
-
-// Inside AdFormDialog, update handleSubmit:
     const handleSubmit = (e: React.FormEvent) => {
         e.preventDefault();
         if (!imagePreview) {
             toast({ title: "Image required", description: "Please upload an image.", variant: "destructive" });
             return;
         }
-        // 👇 FIX: Pass the imageFile
         onSave({ title, description, imageUrl: imagePreview, isActive }, imageFile);
     };
 
@@ -416,7 +402,6 @@ interface AdFormDialogProps {
         </Dialog>
     );
 };
-
 
 interface CouponFormDialogProps {
   isOpen: boolean;
@@ -693,6 +678,7 @@ export default function AdminDashboard() {
     const [isPasswordModalOpen, setPasswordModalOpen] = useState(false);
     const [isPinModalOpen, setPinModalOpen] = useState(false);
     const [isSecurityQuestionModalOpen, setSecurityQuestionModalOpen] = useState(false);
+    
     // Dynamic admin credentials state
     const [adminPassword, setAdminPassword] = useState('');
     const [adminOtp, setAdminOtp] = useState('');
@@ -713,6 +699,7 @@ export default function AdminDashboard() {
     const [staff, setStaff] = useState<StaffMember[]>([]);
     const [ratings, setRatings] = useState<Rating[]>([]);
     const [explicitVendors, setExplicitVendors] = useState<string[]>([]);
+    const [allPurchases, setAllPurchases] = useState<any[]>([]); // 👈 Added Purchase State
 
     const [isDetailsModalOpen, setDetailsModalOpen] = useState(false);
     const [currentItem, setCurrentItem] = useState<AnyListing | null>(null);
@@ -745,7 +732,7 @@ export default function AdminDashboard() {
     const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
     const [selectedDate, setSelectedDate] = useState<Date | null>(null);
 
-    // 👇 FIX: Graph now uses actual Database creation dates!
+    // Chart logic
     const chartData = useMemo(() => {
         const allItems = [...properties, ...roommates];
         
@@ -789,7 +776,6 @@ export default function AdminDashboard() {
         }
         
         if (chartView === 'yearly') {
-            // Include current year even if empty
             const yearsMap: {[key: string]: number} = { [new Date().getFullYear().toString()]: 0 };
             allItems.forEach(item => {
                 if (!item.submittedAt) return;
@@ -813,9 +799,9 @@ export default function AdminDashboard() {
             setIsLoading(false);
         }
     }, [router]);
+
     useEffect(() => {
         if (isAuthenticated) {
-            // Load dynamic credentials
             setAdminPassword(getFromLocalStorage('admin_password', DEFAULT_ADMIN_PASSWORD));
             setAdminOtp(getFromLocalStorage('admin_otp', DEFAULT_ADMIN_OTP));
             setAdminQuestion(getFromLocalStorage('admin_question', DEFAULT_ADMIN_QUESTION));
@@ -830,7 +816,6 @@ export default function AdminDashboard() {
                 try {
                     const allData = await getAdminProperties();
 
-                    // Separate the listings
                     const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
                     const rawRoommates = allData.filter(p => p.propertyType === 'Roommate');
 
@@ -860,31 +845,75 @@ export default function AdminDashboard() {
                     setProperties(realProperties);
                     setRoommates(realRoommates);
 
-                    // Fetch Real Coupons
                     const dbCoupons = await getCoupons();
                     setCoupons(dbCoupons);
 
-                    // Fetch Real Ads
                     const dbAds = await getAdvertisements();
-                    // console.log("🔥 DATABASE ADS FETCHED:", dbAds); // Let's see what Django gives us!
                     setAdvertisements(dbAds);
 
                     const dbStaff = await getStaff();
                     setStaff(dbStaff);
+                    
+                    // 👈 Fetch Purchases
+                    const dbPurchases = await getAllPurchasesAdmin();
+                    setAllPurchases(dbPurchases);
 
-                } catch (error) {
+               } catch (error: any) { 
                     console.error("Failed to load admin data", error);
-                    toast({ title: 'Error', description: 'Could not connect to database.', variant: 'destructive' });
+                    
+                    if (error.response?.status === 403) {
+                        toast({ 
+                            title: 'Permission Denied', 
+                            description: 'Your account lacks Django Admin (is_staff) privileges.', 
+                            variant: 'destructive' 
+                        });
+                    } else if (error.response?.status === 401) {
+                        toast({ 
+                            title: 'Session Expired', 
+                            description: 'Please log in again.', 
+                            variant: 'destructive' 
+                        });
+                        handleLogout();
+                    } else {
+                        toast({ 
+                            title: 'Error', 
+                            description: 'Could not connect to database.', 
+                            variant: 'destructive' 
+                        });
+                    }
                 }
             };
 
             fetchAdminData();
 
-            // CRITICAL: Ensure we only load non-database settings from local storage here
             setExplicitVendors(getFromLocalStorage('explicitVendors', []));
             setPricing(getFromLocalStorage('pricing', defaultPricing));
         }
     }, [isAuthenticated]);
+
+    // 👈 Group purchases by User for the Financials View
+    const groupedPurchases = useMemo(() => {
+        const groups: { [email: string]: { name: string, email: string, plans: any[], totalSpend: number } } = {};
+        
+        allPurchases.forEach(purchase => {
+            if (!groups[purchase.user_email]) {
+                groups[purchase.user_email] = {
+                    name: purchase.user_name || 'N/A',
+                    email: purchase.user_email,
+                    plans: [],
+                    totalSpend: 0
+                };
+            }
+            groups[purchase.user_email].plans.push({
+                plan: purchase.plan_name,
+                price: parseFloat(purchase.amount),
+                date: purchase.created_at
+            });
+            groups[purchase.user_email].totalSpend += parseFloat(purchase.amount);
+        });
+        
+        return Object.values(groups).sort((a, b) => b.totalSpend - a.totalSpend); // Sort by highest spend
+    }, [allPurchases]);
 
     const staffStats = useMemo(() => {
         const allListings = [...properties, ...roommates];
@@ -919,13 +948,11 @@ export default function AdminDashboard() {
     }, [ratings]);
 
     const vendorNumbers = useMemo(() => {
-        // Start with explicitly created vendors
         const vendorData: { [key: string]: { propertyId: string; propertyTitle: string }[] } = (explicitVendors || []).reduce((acc, vendorNumber) => {
             acc[vendorNumber] = [];
             return acc;
         }, {} as { [key: string]: { propertyId: string; propertyTitle: string }[] });
 
-        // Add vendors from properties
         (properties || [])
             .filter(p => p.vendorNumber)
             .forEach(p => {
@@ -949,7 +976,6 @@ export default function AdminDashboard() {
             v.vendorNumber.toLowerCase().includes(vendorSearchTerm.toLowerCase())
         );
     }, [vendorNumbers, vendorSearchTerm]);
-
 
     const handleGenerateVendorNumber = () => {
         const newVendorNumber = `Admin${Math.floor(1000 + Math.random() * 9000)}`;
@@ -1001,52 +1027,49 @@ export default function AdminDashboard() {
         setDetailsModalOpen(true);
     };
     
-const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
-    try {
-        // Convert UI lowercase status to Backend uppercase
-        const backendStatus = status === 'approved' ? 'APPROVED' : 'REJECTED';
-        
-        await updatePropertyStatus(id, backendStatus);
+    const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate', status: 'approved' | 'rejected') => {
+        try {
+            const backendStatus = status === 'approved' ? 'APPROVED' : 'REJECTED';
+            await updatePropertyStatus(id, backendStatus);
 
-        // Update local state so the UI reflects change immediately
-        const updateState = (items: any[]) => items.map(item => 
-            item.id === id ? { ...item, status: status } : item
-        );
+            const updateState = (items: any[]) => items.map(item => 
+                item.id === id ? { ...item, status: status } : item
+            );
 
-        if (type === 'Roommate') {
-            setRoommates(prev => updateState(prev));
-        } else {
-            setProperties(prev => updateState(prev));
+            if (type === 'Roommate') {
+                setRoommates(prev => updateState(prev));
+            } else {
+                setProperties(prev => updateState(prev));
+            }
+
+            setDetailsModalOpen(false);
+            toast({ title: "Success", description: `Property has been ${status}.` });
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to update status on server.", variant: "destructive" });
         }
-
-        setDetailsModalOpen(false);
-        toast({ title: "Success", description: `Property has been ${status}.` });
-    } catch (error) {
-        toast({ title: "Error", description: "Failed to update status on server.", variant: "destructive" });
-    }
-};
+    };
 
     const handleDeleteItem = async (id: string, type: 'PG' | 'Rental' | 'Roommate') => {
-    try {
-        await deleteProperty(id);
+        try {
+            await deleteProperty(id);
 
-        if (type === 'Roommate') {
-            setRoommates(prev => prev.filter(r => r.id !== id));
-        } else {
-            setProperties(prev => prev.filter(p => p.id !== id));
+            if (type === 'Roommate') {
+                setRoommates(prev => prev.filter(r => r.id !== id));
+            } else {
+                setProperties(prev => prev.filter(p => p.id !== id));
+            }
+
+            setDetailsModalOpen(false);
+            toast({ title: "Deleted", description: "Property removed from database.", variant: 'destructive' });
+        } catch (error) {
+            toast({ title: "Error", description: "Failed to delete from server.", variant: "destructive" });
         }
-
-        setDetailsModalOpen(false);
-        toast({ title: "Deleted", description: "Property removed from database.", variant: 'destructive' });
-    } catch (error) {
-        toast({ title: "Error", description: "Failed to delete from server.", variant: "destructive" });
-    }
-};
+    };
 
     const handlePriceChange = (category: 'unlocks' | 'listings', plan: string, value: number) => {
         if (!pricing) return;
         setPricing(prev => {
-            if (!prev) return null; // Should not happen with current logic
+            if (!prev) return null;
             const newPricing = { ...prev };
             (newPricing[category] as any)[plan] = value;
             return newPricing;
@@ -1082,7 +1105,7 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
             formData.append('title', adData.title);
             formData.append('description', adData.description);
             formData.append('is_active', adData.isActive ? 'true' : 'false');
-            if (file) formData.append('image', file); // Only append if a new file was chosen
+            if (file) formData.append('image', file); 
 
             if (editingAd) {
                 await updateAdvertisement(editingAd.id, formData);
@@ -1092,7 +1115,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                 toast({ title: "Advertisement Added" });
             }
             
-            // Refresh list
             setAdvertisements(await getAdvertisements());
             setAdFormModalOpen(false);
             setEditingAd(null);
@@ -1155,7 +1177,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                 await createStaff(staffData);
                 toast({ title: "Staff Added" });
             }
-            // Fetch fresh list from DB
             setStaff(await getStaff());
             setStaffFormModalOpen(false);
             setEditingStaff(null);
@@ -1184,24 +1205,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
         setVendorDetailsModalOpen(true);
     };
     
-    // Handlers for saving dynamic credentials
-    const handleSavePassword = (newPassword: string) => {
-        saveToLocalStorage('admin_password', newPassword);
-        setAdminPassword(newPassword);
-    };
-
-    const handleSavePin = (newPin: string) => {
-        saveToLocalStorage('admin_otp', newPin);
-        setAdminOtp(newPin);
-    };
-
-    const handleSaveSecurityQuestion = (newQuestion: string, newAnswer: string) => {
-        saveToLocalStorage('admin_question', newQuestion);
-        saveToLocalStorage('admin_answer', newAnswer);
-        setAdminQuestion(newQuestion);
-        setAdminAnswer(newAnswer);
-    };
-    
     const handleSaveContactInfo = (info: { email: string, phone: string, address: string }) => {
         saveToLocalStorage('admin_email', info.email);
         saveToLocalStorage('admin_phone', info.phone);
@@ -1210,7 +1213,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
         setAdminPhone(info.phone);
         setAdminAddress(info.address);
     };
-
 
     const StatusBadge = ({ status }: { status?: 'pending' | 'approved' | 'rejected' | boolean }) => {
         const isBoolean = typeof status === 'boolean';
@@ -1279,7 +1281,8 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                         <TabsTrigger value="listings">Listings</TabsTrigger>
                         <TabsTrigger value="management">Management</TabsTrigger>
                         <TabsTrigger value="staff">Staff</TabsTrigger>
-                        {/* <TabsTrigger value="ratings">Ratings</TabsTrigger> */}
+                        {/* 👇 New Purchases Tab 👇 */}
+                        <TabsTrigger value="purchases">Purchases</TabsTrigger>
                     </TabsList>
                 </div>
                 
@@ -1289,7 +1292,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                             <CardTitle className="text-2xl">Platform Overview</CardTitle>
                         </CardHeader>
                         <CardContent>
-                            {/* 👇 FIX: Real Data Boxes 👇 */}
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-6">
                                 <div className="bg-blue-50 p-4 rounded-lg flex items-center justify-between">
                                     <div><p className="text-sm font-medium text-blue-700">Total Properties</p><p className="text-2xl font-bold text-blue-900">{properties.length}</p></div>
@@ -1365,7 +1367,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                             </div>
                         </CardContent>
                     </Card>
-                    {/* The "Availability Inquiries" card has been completely removed from here */}
                 </TabsContent>
 
                 <TabsContent value="listings">
@@ -1599,60 +1600,6 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                                     </Table>
                                 </CardContent>
                             </Card>
-                             {/* <Card>
-                                <CardHeader className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                                    <div>
-                                        <CardTitle className="text-2xl">Vendor Management</CardTitle>
-                                        <CardDescription>Generate and track vendor numbers.</CardDescription>
-                                    </div>
-                                    <div className="flex gap-2">
-                                        <Button onClick={handleGenerateVendorNumber} variant="outline">
-                                            Generate Random
-                                        </Button>
-                                        <Button onClick={() => setCreateVendorModalOpen(true)}>
-                                            <PlusCircle className="mr-2 h-4 w-4" /> Create
-                                        </Button>
-                                    </div>
-                                </CardHeader>
-                                <CardContent>
-                                        <div className="relative mb-4">
-                                        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-                                        <Input 
-                                            placeholder="Search by vendor number..." 
-                                            value={vendorSearchTerm}
-                                            onChange={(e) => setVendorSearchTerm(e.target.value)}
-                                            className="pl-10"
-                                        />
-                                    </div>
-                                    <Table>
-                                        <TableHeader>
-                                            <TableRow>
-                                                <TableHead>Vendor Number</TableHead>
-                                                <TableHead>Properties</TableHead>
-                                            </TableRow>
-                                        </TableHeader>
-                                        <TableBody>
-                                            {filteredVendorNumbers.map(v => (
-                                                <TableRow key={v.vendorNumber}>
-                                                    <TableCell>
-                                                        <Button variant="link" className="font-mono p-0 h-auto" onClick={() => handleViewVendorDetails(v)}>
-                                                            {v.vendorNumber}
-                                                        </Button>
-                                                    </TableCell>
-                                                    <TableCell>{v.properties.length}</TableCell>
-                                                </TableRow>
-                                            ))}
-                                                {filteredVendorNumbers.length === 0 && (
-                                                <TableRow>
-                                                    <TableCell colSpan={2} className="text-center text-muted-foreground py-4">
-                                                        No vendor numbers found.
-                                                    </TableCell>
-                                                </TableRow>
-                                            )}
-                                        </TableBody>
-                                    </Table>
-                                </CardContent>
-                            </Card> */}
                         </div>
                     </div>
                 </TabsContent>
@@ -1682,21 +1629,19 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                                         </TableRow>
                                     </TableHeader>
                                     <TableBody>
-                                        {staffStats.map(s => (
+                                        {staff.map((s: any) => (
                                             <TableRow key={s.id}>
                                                 <TableCell className="font-medium">{s.name}</TableCell>
                                                 <TableCell>{s.userId}</TableCell>
-                                                <TableCell>
-                                                    <Button variant="link" className="text-green-600 font-semibold p-0 h-auto" onClick={() => handleViewStaffActivity(s.name, 'Approved', s.stats.approved)}>
-                                                        {s.stats.approved.length}
-                                                    </Button>
+                                                <TableCell className="text-green-600 font-semibold">
+                                                    {s.approved_count || 0}
+                                                </TableCell>
+                                                <TableCell className="text-red-600 font-semibold">
+                                                    {s.rejected_count || 0}
                                                 </TableCell>
                                                 <TableCell>
-                                                     <Button variant="link" className="text-red-600 font-semibold p-0 h-auto" onClick={() => handleViewStaffActivity(s.name, 'Rejected', s.stats.rejected)}>
-                                                        {s.stats.rejected.length}
-                                                    </Button>
+                                                    {s.avg_processing_hours !== 'N/A' && s.avg_processing_hours !== undefined ? `${s.avg_processing_hours} hours` : 'N/A'}
                                                 </TableCell>
-                                                <TableCell>{s.stats.avgProcessingTime} hours</TableCell>
                                                 <TableCell className="text-right">
                                                     <Button variant="ghost" size="icon" onClick={() => handleOpenStaffForm(s)}><Edit className="h-4 w-4" /></Button>
                                                     <AlertDialog>
@@ -1721,49 +1666,56 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                     </Card>
                 </TabsContent>
 
-                {/* <TabsContent value="ratings">
+                {/* 👇 NEW PURCHASES TAB CONTENT 👇 */}
+                <TabsContent value="purchases">
                     <Card>
-                         <CardHeader>
-                            <CardTitle className="text-2xl">User Ratings & Feedback</CardTitle>
-                            <CardDescription>Review what users are saying about their experience.</CardDescription>
+                        <CardHeader>
+                            <CardTitle className="text-2xl">Financial Overview & User Spend</CardTitle>
+                            <CardDescription>Track all plan purchases, grouped by user, including lifetime expenditure.</CardDescription>
                         </CardHeader>
                         <CardContent>
-                            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-                                <div className="lg:col-span-1">
-                                    <Card className="bg-amber-50 border-amber-200 text-center p-6">
-                                        <CardTitle className="text-amber-800">Average Rating</CardTitle>
-                                        <div className="flex items-center justify-center gap-2 my-4">
-                                            <p className="text-6xl font-bold text-amber-900">{averageRating.toFixed(1)}</p>
-                                            <Star className="text-6xl text-amber-400 fill-amber-400" />
-                                        </div>
-                                        <CardDescription>{ratings.length} total ratings</CardDescription>
-                                    </Card>
-                                </div>
-                                <div className="lg:col-span-2">
-                                     <h3 className="text-lg font-semibold mb-4">Feedback Comments</h3>
-                                     <div className="space-y-4 max-h-96 overflow-y-auto pr-4">
-                                        {ratings.filter(r => r.feedback).map(r => (
-                                            <Card key={r.id} className="p-4">
-                                                <div className="flex justify-between items-start">
-                                                    <div className="flex items-center gap-2">
-                                                        {[...Array(5)].map((_, i) => (
-                                                            <Star key={i} className={cn("w-5 h-5", i < r.rating ? "text-yellow-400 fill-yellow-400" : "text-slate-300")} />
+                            <div className="overflow-x-auto">
+                                <Table>
+                                    <TableHeader>
+                                        <TableRow>
+                                            <TableHead>User</TableHead>
+                                            <TableHead>Email</TableHead>
+                                            <TableHead>Plans Bought</TableHead>
+                                            <TableHead className="text-right">Total Lifetime Spend</TableHead>
+                                        </TableRow>
+                                    </TableHeader>
+                                    <TableBody>
+                                        {groupedPurchases.map((user, idx) => (
+                                            <TableRow key={idx}>
+                                                <TableCell className="font-medium">{user.name}</TableCell>
+                                                <TableCell>{user.email}</TableCell>
+                                                <TableCell>
+                                                    <div className="space-y-1">
+                                                        {user.plans.map((p, i) => (
+                                                            <div key={i} className="text-sm bg-slate-100 px-2 py-1 rounded inline-block mr-2 mb-1 border">
+                                                                {p.plan} <span className="text-muted-foreground ml-1">(₹{p.price})</span>
+                                                            </div>
                                                         ))}
                                                     </div>
-                                                    <p className="text-xs text-muted-foreground">{format(r.date, 'dd MMM, yyyy')}</p>
-                                                </div>
-                                                <p className="mt-2 text-sm text-foreground flex items-start gap-2">
-                                                    <MessageSquare className="w-4 h-4 mt-0.5 text-muted-foreground shrink-0" /> 
-                                                    <span>{r.feedback}</span>
-                                                </p>
-                                            </Card>
+                                                </TableCell>
+                                                <TableCell className="text-right font-bold text-primary text-lg">
+                                                    ₹{user.totalSpend.toLocaleString()}
+                                                </TableCell>
+                                            </TableRow>
                                         ))}
-                                     </div>
-                                </div>
+                                        {groupedPurchases.length === 0 && (
+                                            <TableRow>
+                                                <TableCell colSpan={4} className="text-center py-8 text-muted-foreground">
+                                                    No purchases recorded yet.
+                                                </TableCell>
+                                            </TableRow>
+                                        )}
+                                    </TableBody>
+                                </Table>
                             </div>
                         </CardContent>
                     </Card>
-                </TabsContent> */}
+                </TabsContent>
             </Tabs>
             </main>
 
@@ -1984,17 +1936,17 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                 </DialogContent>
             </Dialog>
 
-             {/* Settings Modals */}
+{/* Settings Modals */}
             <Dialog open={activeSettingsDialog === 'password'} onOpenChange={() => setActiveSettingsDialog(null)}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Change Password</DialogTitle></DialogHeader>
-                    <PasswordChangeForm currentPassword={adminPassword} onSave={handleSavePassword} onClose={() => setActiveSettingsDialog(null)} />
+                    <PasswordChangeForm currentPassword={adminPassword} onSave={handleUpdatePassword} onClose={() => setActiveSettingsDialog(null)} />
                 </DialogContent>
             </Dialog>
             <Dialog open={activeSettingsDialog === 'pin'} onOpenChange={() => setActiveSettingsDialog(null)}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Change PIN</DialogTitle></DialogHeader>
-                    <PinChangeForm currentPin={adminOtp} onSave={handleSavePin} onClose={() => setActiveSettingsDialog(null)} />
+                    <PinChangeForm currentPin={adminOtp} onSave={handleUpdatePin} onClose={() => setActiveSettingsDialog(null)} />
                 </DialogContent>
             </Dialog>
             <Dialog open={activeSettingsDialog === 'security'} onOpenChange={() => setActiveSettingsDialog(null)}>
@@ -2003,7 +1955,7 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                     <SecurityQuestionChangeForm 
                         currentQuestion={adminQuestion} 
                         currentAnswer={adminAnswer} 
-                        onSave={handleSaveSecurityQuestion} 
+                        onSave={handleUpdateSecurityQuestion} 
                         onClose={() => setActiveSettingsDialog(null)} />
                 </DialogContent>
             </Dialog>
@@ -2020,7 +1972,7 @@ const handleUpdateStatus = async (id: string, type: 'PG' | 'Rental' | 'Roommate'
                 </DialogContent>
             </Dialog>
 
-        {/* Security Setting Modals */}
+        {/* Security Setting Modals (Header Menu) */}
             <Dialog open={isPasswordModalOpen} onOpenChange={setPasswordModalOpen}>
                 <DialogContent>
                     <DialogHeader><DialogTitle>Change Admin Password</DialogTitle></DialogHeader>

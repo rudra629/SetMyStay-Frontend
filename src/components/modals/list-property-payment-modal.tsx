@@ -1,65 +1,126 @@
+'use client';
 
-"use client";
+import React, { useState } from 'react';
+import Script from 'next/script';
+import axios from '@/lib/axios';
+import { useToast } from '@/hooks/use-toast';
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogDescription,
+} from '@/components/ui/dialog';
+import { Button } from '@/components/ui/button';
 
-import { useState } from 'react';
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
-import { Button } from "@/components/ui/button";
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
-import { Label } from "@/components/ui/label";
-import type { PricingData } from '@/lib/types';
-
-interface ListPropertyPaymentModalProps {
+interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onProceedToPayment: (plan: { title: string; price: number }) => void;
-  pricing: PricingData | null;
+  propertyId: string;
+  amount?: number;     // 👈 Made optional
+  userEmail?: string;  // 👈 Made optional
+  userName?: string;   // 👈 Made optional
 }
 
-export function ListPropertyPaymentModal({ isOpen, onClose, onProceedToPayment, pricing }: ListPropertyPaymentModalProps) {
-  const listingPlans = {
-    roommate: { title: 'Roommate Listing', price: pricing?.listings.roommate || 149 },
-    pg: { title: 'PG Listing', price: pricing?.listings.pg || 349 },
-    rental: { title: 'Rental Listing', price: pricing?.listings.rental || 999 },
-  };
+export function ListPropertyPaymentModal({ 
+  isOpen, 
+  onClose, 
+  propertyId, 
+  amount = 499, // 👈 Added fallback default amount
+  userEmail = "owner@setmystay.com", // 👈 Added fallback email
+  userName = "Property Owner" // 👈 Added fallback name
+}: PaymentModalProps) {
+  const [isProcessing, setIsProcessing] = useState(false);
+  const { toast } = useToast();
 
-  type PlanKey = keyof typeof listingPlans;
-  const [selectedPlan, setSelectedPlan] = useState<PlanKey>('roommate');
+  const handlePayment = async () => {
+    setIsProcessing(true);
 
-  const handleSubmit = () => {
-    onProceedToPayment({
-      title: listingPlans[selectedPlan].title,
-      price: listingPlans[selectedPlan].price,
-    });
+    try {
+      // 👈 FIXED URL: Removed leading slash/api so it resolves correctly with your axios.ts config
+      const { data } = await axios.post('listings/payments/create-order/', {
+        amount: amount,
+        property_id: propertyId
+      });
+
+      const options = {
+        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+        amount: data.amount,
+        currency: data.currency,
+        name: 'SetMyStay',
+        description: 'Property Listing Fee',
+        order_id: data.order_id,
+        handler: function (response: any) {
+          toast({
+            title: "Payment Successful!",
+            description: `Payment ID: ${response.razorpay_payment_id}`,
+            variant: "default",
+          });
+          onClose();
+        },
+        prefill: {
+          name: userName,
+          email: userEmail,
+        },
+        theme: {
+          color: '#2563eb', 
+        },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        toast({
+          title: "Payment Failed",
+          description: response.error.description,
+          variant: "destructive",
+        });
+      });
+      
+      rzp.open();
+    } catch (error) {
+      console.error("Payment Initialization Failed", error);
+      toast({
+        title: "Error",
+        description: "Could not initialize payment gateway. Please ensure your backend is running.",
+        variant: "destructive",
+      });
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle className="text-2xl text-center">Finalize Your Listing</DialogTitle>
-          <DialogDescription className="text-center">Choose your listing plan to proceed.</DialogDescription>
-        </DialogHeader>
-        <div className="py-4">
-          <RadioGroup value={selectedPlan} onValueChange={(value) => setSelectedPlan(value as PlanKey)} className="grid gap-4">
-            {Object.entries(listingPlans).map(([key, { title, price }]) => (
-              <Label key={key} htmlFor={key} className="flex items-center justify-between p-4 border rounded-lg cursor-pointer [&:has([data-state=checked])]:border-primary">
-                <div>
-                  <p className="font-semibold">{title}</p>
-                  <p className="text-sm text-muted-foreground">30-day listing</p>
-                </div>
-                <div className="flex items-center gap-4">
-                  <p className="font-bold text-lg">₹{price}</p>
-                  <RadioGroupItem value={key} id={key} />
-                </div>
-              </Label>
-            ))}
-          </RadioGroup>
-        </div>
-        <Button size="lg" className="w-full" onClick={handleSubmit}>
-          Proceed to Confirmation
-        </Button>
-        <p className="text-xs text-muted-foreground text-center mt-2">Secure payment powered by SetMyStay</p>
-      </DialogContent>
-    </Dialog>
+    <>
+      <Script 
+        id="razorpay-checkout-js" 
+        src="https://checkout.razorpay.com/v1/checkout.js" 
+      />
+      
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>Complete Your Listing</DialogTitle>
+            <DialogDescription>
+              Pay the listing fee of ₹{amount} to publish your property on SetMyStay.
+            </DialogDescription>
+          </DialogHeader>
+          
+          <div className="flex flex-col gap-4 py-4">
+            <div className="flex justify-between items-center bg-slate-50 p-4 rounded-lg">
+              <span className="font-medium text-slate-700">Total Amount</span>
+              <span className="font-bold text-lg">₹{amount}</span>
+            </div>
+            
+            <Button 
+              onClick={handlePayment} 
+              disabled={isProcessing}
+              className="w-full"
+            >
+              {isProcessing ? "Processing..." : `Pay ₹${amount} Now`}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
