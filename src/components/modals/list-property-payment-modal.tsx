@@ -12,33 +12,35 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
+import { useRouter } from 'next/navigation'; // 👈 Added router for redirection
 
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
   propertyId: string;
-  amount?: number;     // 👈 Made optional
-  userEmail?: string;  // 👈 Made optional
-  userName?: string;   // 👈 Made optional
+  amount?: number;
+  userEmail?: string;
+  userName?: string;
 }
 
 export function ListPropertyPaymentModal({ 
   isOpen, 
   onClose, 
   propertyId, 
-  amount = 499, // 👈 Added fallback default amount
-  userEmail = "owner@setmystay.com", // 👈 Added fallback email
-  userName = "Property Owner" // 👈 Added fallback name
+  amount = 499,
+  userEmail = "owner@setmystay.com",
+  userName = "Property Owner"
 }: PaymentModalProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
+  const router = useRouter();
 
   const handlePayment = async () => {
     setIsProcessing(true);
 
     try {
-      // 👈 FIXED URL: Removed leading slash/api so it resolves correctly with your axios.ts config
-      const { data } = await axios.post('listings/payments/create-order/', {
+      // Create the order on Django
+      const { data } = await axios.post('/payments/create-order/', {
         amount: amount,
         property_id: propertyId
       });
@@ -50,13 +52,24 @@ export function ListPropertyPaymentModal({
         name: 'SetMyStay',
         description: 'Property Listing Fee',
         order_id: data.order_id,
-        handler: function (response: any) {
+        handler: async function (response: any) {
           toast({
             title: "Payment Successful!",
-            description: `Payment ID: ${response.razorpay_payment_id}`,
+            description: `Processing your listing...`,
             variant: "default",
           });
-          onClose();
+          
+          // 👇 BUG 2 FIX: Manually verify payment since local webhooks fail
+          try {
+             await axios.post('/payments/verify-local/', {
+                 property_id: propertyId,
+                 razorpay_payment_id: response.razorpay_payment_id
+             });
+             toast({ title: "Listing Submitted to Admin!" });
+             router.push('/'); // Redirect user after successful listing
+          } catch (e) {
+             console.error("Local verification failed", e);
+          }
         },
         prefill: {
           name: userName,
@@ -76,7 +89,12 @@ export function ListPropertyPaymentModal({
         });
       });
       
+      // 👇 BUG 1 FIX: Close the Next.js modal first to remove the invisible click-shield!
+      onClose(); 
+      
+      // Now open Razorpay
       rzp.open();
+
     } catch (error) {
       console.error("Payment Initialization Failed", error);
       toast({
@@ -84,9 +102,8 @@ export function ListPropertyPaymentModal({
         description: "Could not initialize payment gateway. Please ensure your backend is running.",
         variant: "destructive",
       });
-    } finally {
-      setIsProcessing(false);
-    }
+      setIsProcessing(false); // Reset processing state if initialization fails
+    } 
   };
 
   return (
