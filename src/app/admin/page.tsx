@@ -66,7 +66,7 @@ const generateDailyData = (date: Date) => {
 };
 const generateWeeklyData = (year: number) => {
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    let weeklyData = [];
+    let weeklyData: { name: string, views: number }[] = [];
     months.forEach((month) => {
         for (let week = 1; week <= 4; week++) {
             weeklyData.push({
