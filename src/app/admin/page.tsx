@@ -816,8 +816,8 @@ export default function AdminDashboard() {
                 try {
                     const allData = await getAdminProperties();
 
-                    const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
-                    const rawRoommates = allData.filter(p => p.propertyType === 'Roommate');
+                   const realProperties = allData.filter(p => (p.propertyType as string) !== 'Roommate');
+                   const rawRoommates = allData.filter(p => (p.propertyType as string) === 'Roommate');
 
                     const realRoommates: RoommateProfile[] = rawRoommates.map(listing => ({
                         id: listing.id,
