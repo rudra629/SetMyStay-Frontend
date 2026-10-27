@@ -68,7 +68,8 @@ export function UnlockDetailsModal({ isOpen, onClose, onPlanSelect, onNavigateTo
     // CRITICAL: Wait 400ms for Radix UI to fully unlock the background before opening Razorpay
     setTimeout(async () => {
         try {
-            const { data } = await axios.post('http://localhost:8000/api/payments/create-order/', {
+            // Uses relative path so axios automatically prepends API_URL (Vercel or localhost)
+            const { data } = await axios.post('/payments/create-order/', {
                 amount: finalAmount, 
                 property_id: null,
                 plan_name: selectedPlan.title

@@ -8,6 +8,9 @@ import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { GoogleOAuthProvider, GoogleLogin } from '@react-oauth/google';
 
+// Works on Vercel (uses NEXT_PUBLIC_API_URL) and Locally (falls back to localhost:8000)
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000/api';
+
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -37,8 +40,8 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
   const handleGoogleSuccess = async (credentialResponse: any) => {
     setIsLoading(true);
     try {
-      // 1. Send the Google token to our Django backend
-      const res = await fetch('http://localhost:8000/api/users/google-login/', {
+      // 1. Send the Google token to our Django backend using dynamic API_URL
+      const res = await fetch(`${API_URL}/users/google-login/`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: credentialResponse.credential }),
@@ -82,8 +85,8 @@ export function AuthModal({ isOpen, onClose, onLoginSuccess }: AuthModalProps) {
     try {
       const token = localStorage.getItem('access_token');
       
-      // Call Django endpoint to save the phone number
-      const res = await fetch('http://localhost:8000/api/users/complete-profile/', {
+      // Call Django endpoint to save the phone number using dynamic API_URL
+      const res = await fetch(`${API_URL}/users/complete-profile/`, {
         method: 'PUT',
         headers: { 
           'Content-Type': 'application/json',
