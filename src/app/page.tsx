@@ -640,6 +640,8 @@ export default function Home() {
         isOpen={isListPaymentModalOpen}
         onClose={() => setListPaymentModalOpen(false)}
         propertyId={pendingListingData?.id || ''}
+        onProceedToPayment={handleListProperty}
+        pricing={pricing}
       />
       <AuthModal
         isOpen={isAuthModalOpen}

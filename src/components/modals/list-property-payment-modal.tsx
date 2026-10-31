@@ -17,19 +17,22 @@ import { useRouter } from 'next/navigation';
 interface PaymentModalProps {
   isOpen: boolean;
   onClose: () => void;
-  propertyId: string;
+  propertyId?: string;
   amount?: number;
   userEmail?: string;
   userName?: string;
+  pricing?: any;
+  onProceedToPayment?: (plan?: any) => Promise<void> | void;
 }
 
 export function ListPropertyPaymentModal({ 
   isOpen, 
   onClose, 
-  propertyId, 
+  propertyId = '', 
   amount = 499,
   userEmail = "owner@setmystay.com",
-  userName = "Property Owner"
+  userName = "Property Owner",
+  onProceedToPayment,
 }: PaymentModalProps) {
   const [isProcessing, setIsProcessing] = useState(false);
   const { toast } = useToast();
@@ -37,8 +40,6 @@ export function ListPropertyPaymentModal({
 
   const handlePayment = async () => {
     setIsProcessing(true);
-
-    // Close modal first so Radix UI releases pointer-events lock before Razorpay opens
     onClose();
 
     toast({
@@ -48,10 +49,9 @@ export function ListPropertyPaymentModal({
 
     setTimeout(async () => {
       try {
-        // Send amount, property_id, AND plan_name so backend order creation succeeds
         const { data } = await api.post('/payments/create-order/', {
           amount: amount,
-          property_id: propertyId,
+          property_id: propertyId || null,
           plan_name: 'Property Listing Fee',
         });
 
@@ -65,14 +65,23 @@ export function ListPropertyPaymentModal({
           handler: async function (response: any) {
             toast({
               title: "Payment Successful!",
-              description: "Processing your listing...",
+              description: "Submitting your listing for approval...",
               variant: "default",
             });
-            
+
+            // 1. If parent passed a callback to create the listing after payment, run it now!
+            if (onProceedToPayment) {
+              try {
+                await onProceedToPayment({ title: 'Property Listing Fee', price: amount });
+              } catch (err) {
+                console.error("Error in onProceedToPayment:", err);
+              }
+            }
+
+            // 2. Verify payment & record in Purchase History on backend
             try {
-              // Ensure this matches your Django urls.py exactly (e.g., /payments/verify-local/)
               await api.post('/payments/verify-local/', {
-                property_id: propertyId,
+                property_id: propertyId || null,
                 razorpay_payment_id: response.razorpay_payment_id,
                 razorpay_order_id: response.razorpay_order_id,
                 plan_name: 'Property Listing Fee',
@@ -80,6 +89,22 @@ export function ListPropertyPaymentModal({
               });
             } catch (e) {
               console.warn("Verification warning:", e);
+            }
+
+            // 3. Also save to localStorage purchase history so HistoryModal shows it immediately
+            try {
+              const existing = JSON.parse(localStorage.getItem('setmystay_purchase_history') || '[]');
+              const newPurchase = {
+                id: response.razorpay_payment_id || `pur_${Date.now()}`,
+                plan: 'Property Listing Fee',
+                plan_name: 'Property Listing Fee',
+                date: new Date().toISOString(),
+                created_at: new Date().toISOString(),
+                amount: amount,
+              };
+              localStorage.setItem('setmystay_purchase_history', JSON.stringify([newPurchase, ...existing]));
+            } catch (e) {
+              console.error(e);
             }
 
             toast({
@@ -113,7 +138,7 @@ export function ListPropertyPaymentModal({
         console.error("Payment Initialization Failed:", error);
         toast({
           title: "Payment Gateway Error",
-          description: error?.response?.data?.error || "Could not initialize payment gateway. Check Razorpay keys on Render.",
+          description: error?.response?.data?.error || "Could not initialize payment gateway.",
           variant: "destructive",
         });
         setIsProcessing(false);
