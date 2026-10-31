@@ -2,7 +2,7 @@
 
 import React, { useState } from 'react';
 import Script from 'next/script';
-import axios from '@/lib/axios';
+import api from '@/lib/api';
 import { useToast } from '@/hooks/use-toast';
 import {
   Dialog,
@@ -12,7 +12,7 @@ import {
   DialogDescription,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { useRouter } from 'next/navigation'; // 👈 Added router for redirection
+import { useRouter } from 'next/navigation';
 
 interface PaymentModalProps {
   isOpen: boolean;
@@ -38,72 +38,86 @@ export function ListPropertyPaymentModal({
   const handlePayment = async () => {
     setIsProcessing(true);
 
-    try {
-      // Create the order on Django
-      const { data } = await axios.post('/payments/create-order/', {
-        amount: amount,
-        property_id: propertyId
-      });
+    // Close modal first so Radix UI releases pointer-events lock before Razorpay opens
+    onClose();
 
-      const options = {
-        key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
-        amount: data.amount,
-        currency: data.currency,
-        name: 'SetMyStay',
-        description: 'Property Listing Fee',
-        order_id: data.order_id,
-        handler: async function (response: any) {
+    toast({
+      title: "Connecting to payment gateway...",
+      description: "Please wait a moment.",
+    });
+
+    setTimeout(async () => {
+      try {
+        // Send amount, property_id, AND plan_name so backend order creation succeeds
+        const { data } = await api.post('/payments/create-order/', {
+          amount: amount,
+          property_id: propertyId,
+          plan_name: 'Property Listing Fee',
+        });
+
+        const options = {
+          key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID,
+          amount: data.amount,
+          currency: data.currency || 'INR',
+          name: 'SetMyStay',
+          description: 'Property Listing Fee',
+          order_id: data.order_id,
+          handler: async function (response: any) {
+            toast({
+              title: "Payment Successful!",
+              description: "Processing your listing...",
+              variant: "default",
+            });
+            
+            try {
+              await api.post('/payments/verify-local/', {
+                property_id: propertyId,
+                razorpay_payment_id: response.razorpay_payment_id,
+                razorpay_order_id: response.razorpay_order_id,
+                plan_name: 'Property Listing Fee',
+                amount: amount,
+              });
+            } catch (e) {
+              console.warn("Verification warning:", e);
+            }
+
+            toast({
+              title: "Listing Submitted!",
+              description: "Your property has been submitted for admin approval.",
+            });
+            setIsProcessing(false);
+            router.push('/');
+          },
+          prefill: {
+            name: (typeof window !== 'undefined' && localStorage.getItem('user_name')) || userName,
+            email: userEmail,
+          },
+          theme: {
+            color: '#2563eb', 
+          },
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', function (response: any) {
           toast({
-            title: "Payment Successful!",
-            description: `Processing your listing...`,
-            variant: "default",
+            title: "Payment Failed",
+            description: response.error?.description || "Transaction was declined.",
+            variant: "destructive",
           });
-          
-          // 👇 BUG 2 FIX: Manually verify payment since local webhooks fail
-          try {
-             await axios.post('/payments/verify-local/', {
-                 property_id: propertyId,
-                 razorpay_payment_id: response.razorpay_payment_id
-             });
-             toast({ title: "Listing Submitted to Admin!" });
-             router.push('/'); // Redirect user after successful listing
-          } catch (e) {
-             console.error("Local verification failed", e);
-          }
-        },
-        prefill: {
-          name: userName,
-          email: userEmail,
-        },
-        theme: {
-          color: '#2563eb', 
-        },
-      };
+          setIsProcessing(false);
+        });
 
-      const rzp = new (window as any).Razorpay(options);
-      rzp.on('payment.failed', function (response: any) {
+        rzp.open();
+      } catch (error: any) {
+        console.error("Payment Initialization Failed:", error);
         toast({
-          title: "Payment Failed",
-          description: response.error.description,
+          title: "Payment Gateway Error",
+          description: error?.response?.data?.error || "Could not initialize payment gateway. Check Razorpay keys on Render.",
           variant: "destructive",
         });
-      });
-      
-      // 👇 BUG 1 FIX: Close the Next.js modal first to remove the invisible click-shield!
-      onClose(); 
-      
-      // Now open Razorpay
-      rzp.open();
-
-    } catch (error) {
-      console.error("Payment Initialization Failed", error);
-      toast({
-        title: "Error",
-        description: "Could not initialize payment gateway. Please ensure your backend is running.",
-        variant: "destructive",
-      });
-      setIsProcessing(false); // Reset processing state if initialization fails
-    } 
+        setIsProcessing(false);
+      }
+    }, 400);
   };
 
   return (

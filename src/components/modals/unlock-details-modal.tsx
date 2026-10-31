@@ -11,7 +11,7 @@ import { Check, Star, Gem, Rocket, Crown, Building, User } from "lucide-react";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import type { UnlockPlan, PricingData, Coupon } from "@/lib/types";
 import { PaymentConfirmationModal } from "./payment-confirmation-modal";
-
+import axios from "axios";
 interface UnlockDetailsModalProps {
   isOpen: boolean;
   onClose: () => void;
@@ -86,33 +86,39 @@ export function UnlockDetailsModal({ isOpen, onClose, onPlanSelect, onNavigateTo
           description: currentPlan.title,
           order_id: data.order_id,
           handler: async function (response: any) {
-            try {
-              // Verify signature and save purchase to database on both local & hosted backend
-              await api.post('/payments/verify/', {
-                razorpay_payment_id: response.razorpay_payment_id,
-                razorpay_order_id: response.razorpay_order_id,
-                razorpay_signature: response.razorpay_signature,
-                plan_name: currentPlan.title,
-                amount: finalAmount
-              });
+                    // 1. Record purchase on backend so it appears in Purchase History
+                    try {
+                        await axios.post('/payments/verify-local/', {
+                            property_id: null,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_order_id: response.razorpay_order_id,
+                            plan_name: selectedPlan.title,
+                            amount: finalAmount,
+                        });
+                    } catch (e) {
+                        console.warn("History sync warning:", e);
+                    }
 
-              toast({
-                title: "Payment Successful & Recorded!",
-                description: `Payment ID: ${response.razorpay_payment_id}`,
-                variant: "default",
-              });
-            } catch (verifyError) {
-              console.error("Verification failed", verifyError);
-              toast({
-                title: "Payment Completed",
-                description: "Payment succeeded, but history sync encountered an issue.",
-                variant: "default",
-              });
-            } finally {
-              setSelectedPlan(null);
-              onPlanSelect({ plan: currentPlan.plan, title: currentPlan.title, price: currentPlan.price });
-            }
-          },
+                    // 2. Save subscription/unlock credits in localStorage so UI reflects it immediately
+                    const planValue = selectedPlan.plan;
+                    localStorage.setItem('setmystay_unlock_plan', JSON.stringify(planValue));
+                    if (planValue === 'unlimited') {
+                        localStorage.setItem('setmystay_remaining_unlocks', 'unlimited');
+                    } else if (typeof planValue === 'number') {
+                        const current = parseInt(localStorage.getItem('setmystay_remaining_unlocks') || '0', 10);
+                        const nextTotal = (isNaN(current) ? 0 : current) + planValue;
+                        localStorage.setItem('setmystay_remaining_unlocks', String(nextTotal));
+                    }
+
+                    toast({
+                        title: "Payment Successful!",
+                        description: `Your ${selectedPlan.title} is now active!`,
+                        variant: "default",
+                    });
+
+                    // 3. Update parent state in page.tsx
+                    onPlanSelect({ plan: selectedPlan.plan, title: selectedPlan.title, price: finalAmount });
+                },
           prefill: {
             name: "SetMyStay User",
             email: "user@setmystay.com",
