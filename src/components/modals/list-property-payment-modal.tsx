@@ -70,6 +70,7 @@ export function ListPropertyPaymentModal({
             });
             
             try {
+              // Ensure this matches your Django urls.py exactly (e.g., /payments/verify-local/)
               await api.post('/payments/verify-local/', {
                 property_id: propertyId,
                 razorpay_payment_id: response.razorpay_payment_id,
