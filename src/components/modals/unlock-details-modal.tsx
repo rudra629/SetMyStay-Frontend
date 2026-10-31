@@ -86,7 +86,23 @@ export function UnlockDetailsModal({ isOpen, onClose, onPlanSelect, onNavigateTo
           description: currentPlan.title,
           order_id: data.order_id,
           handler: async function (response: any) {
-                    // 1. Record purchase on backend so it appears in Purchase History
+                    // 1. Save to localStorage purchase history immediately
+                    try {
+                        const existing = JSON.parse(localStorage.getItem('setmystay_purchase_history') || '[]');
+                        const newPurchase = {
+                            id: response.razorpay_payment_id || `pur_${Date.now()}`,
+                            plan: selectedPlan.title,
+                            plan_name: selectedPlan.title,
+                            date: new Date().toISOString(),
+                            created_at: new Date().toISOString(),
+                            amount: finalAmount,
+                        };
+                        localStorage.setItem('setmystay_purchase_history', JSON.stringify([newPurchase, ...existing]));
+                    } catch (e) {
+                        console.error(e);
+                    }
+
+                    // 2. Also notify backend
                     try {
                         await axios.post('/payments/verify-local/', {
                             property_id: null,
@@ -99,24 +115,12 @@ export function UnlockDetailsModal({ isOpen, onClose, onPlanSelect, onNavigateTo
                         console.warn("History sync warning:", e);
                     }
 
-                    // 2. Save subscription/unlock credits in localStorage so UI reflects it immediately
-                    const planValue = selectedPlan.plan;
-                    localStorage.setItem('setmystay_unlock_plan', JSON.stringify(planValue));
-                    if (planValue === 'unlimited') {
-                        localStorage.setItem('setmystay_remaining_unlocks', 'unlimited');
-                    } else if (typeof planValue === 'number') {
-                        const current = parseInt(localStorage.getItem('setmystay_remaining_unlocks') || '0', 10);
-                        const nextTotal = (isNaN(current) ? 0 : current) + planValue;
-                        localStorage.setItem('setmystay_remaining_unlocks', String(nextTotal));
-                    }
-
                     toast({
                         title: "Payment Successful!",
                         description: `Your ${selectedPlan.title} is now active!`,
                         variant: "default",
                     });
 
-                    // 3. Update parent state in page.tsx
                     onPlanSelect({ plan: selectedPlan.plan, title: selectedPlan.title, price: finalAmount });
                 },
           prefill: {

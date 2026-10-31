@@ -21,8 +21,8 @@ import {
 
 // 🚨 IMPORTANT: Enter your Django Superuser credentials here!
 // This allows the 3FA dashboard to silently grab a valid token for database access.
-const MASTER_DJANGO_USERNAME = "rudra"; 
-const MASTER_DJANGO_PASSWORD = "123"; 
+const MASTER_DJANGO_USERNAME = "admin"; 
+const MASTER_DJANGO_PASSWORD = "Admin@12345"; 
 
 const DEFAULT_ADMIN_PASSWORD = 'Bluechip@123';
 const DEFAULT_ADMIN_OTP = '16082007';
