@@ -1,6 +1,8 @@
-"use client";import React, { useState, useEffect, useCallback } from "react";
+"use client";
+
+import React, { useState, useEffect, useCallback } from "react";
 import type { Listing, RoommateProfile, Page, ListingType, UnlockPlan, Bed, Advertisement, Coupon, Purchase, AnyListing, PricingData } from "@/lib/types";
-import { dummyProperties, dummyRoommates, dummyAdvertisements, defaultPricing, dummyCoupons } from "@/lib/data";
+import { defaultPricing } from "@/lib/data";
 import { useToast } from "@/hooks/use-toast";
 import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements, createListing } from "@/lib/api";
 
@@ -84,13 +86,13 @@ export default function Home() {
 
   useEffect(() => {
     if (isClient) {
-      const loggedInStatus = getFromLocalStorage('setmystay_isLoggedIn', false);
+      const hasToken = !!localStorage.getItem('access_token');
+      const loggedInStatus = getFromLocalStorage('setmystay_isLoggedIn', false) || hasToken;
       setIsLoggedIn(loggedInStatus);
       
       const fetchData = async () => {
         setIsLoading(true);
         try {
-          // 1. Fetch Properties
           const allData = await getProperties();
 
           const realProperties = allData.filter(p => p.propertyType !== 'Roommate');
@@ -127,11 +129,9 @@ export default function Home() {
           setFeaturedProperties(shuffledListings.slice(0, 3));
           setFeaturedRoommates(shuffledRoommates.filter(r => r.hasProperty).slice(0, 3));
 
-          // 2. Fetch Live Coupons from Django
           const liveCoupons = await getCoupons();
           setActiveCoupons(liveCoupons);
 
-          // 3. Fetch Live Ads from Django
           const liveAds = await getAdvertisements();
           const adShownInSession = sessionStorage.getItem('setmystay_ad_shown');
           const activeAd = liveAds.find((ad: Advertisement) => ad.isActive);
@@ -217,7 +217,7 @@ export default function Home() {
 
   const handleRateUsClose = (rated: boolean) => {
     setRateUsModalOpen(false);
-  }
+  };
   
   const useUnlock = useCallback((itemId: string) => {
     let success = false;
@@ -263,9 +263,16 @@ export default function Home() {
       return newUnlocksState;
     });
 
+    const newPurchase: Purchase = { id: `purchase_${Date.now()}`, planName, amount, date: new Date() };
+
     setPurchaseHistory(currentHistory => {
-        const newPurchase: Purchase = { id: `purchase_${Date.now()}`, planName, amount, date: new Date() };
-        return [...currentHistory, newPurchase];
+        const updated = [newPurchase, ...currentHistory];
+        try {
+          localStorage.setItem('setmystay_purchase_history', JSON.stringify(updated));
+        } catch (e) {
+          console.error(e);
+        }
+        return updated;
     });
 
     toast({
@@ -311,7 +318,7 @@ export default function Home() {
             setUnlockModalOpen(true);
         }
     }
-  }
+  };
   
   const handleToggleLike = async (itemId: string) => {
     if (!isLoggedIn) {
@@ -350,12 +357,8 @@ export default function Home() {
     setListPaymentModalOpen(true);
   };
 
-  // Make sure to import createListing at the top of your file!
-// import { getProperties, toggleFavoriteProperty, getCoupons, getAdvertisements, createListing } from "@/lib/api";
-
-const handleListProperty = async () => {
+  const handleListProperty = async () => {
     if (!pendingListingData) return;
-    console.log("AMENITIES BEING SENT:", pendingListingData.amenities);
     setListPaymentModalOpen(false);
     
     let partialAddress = `${pendingListingData.locality}, ${pendingListingData.city}`;
@@ -364,10 +367,7 @@ const handleListProperty = async () => {
     }
 
     try {
-        // We need to build a FormData object because we are sending files (images/documents) to Django
         const formData = new FormData();
-        
-        // Basic Fields
         formData.append('title', pendingListingData.title || pendingListingData.ownerName);
         formData.append('owner_name', pendingListingData.ownerName);
         formData.append('rent', pendingListingData.rent.toString());
@@ -379,18 +379,15 @@ const handleListProperty = async () => {
         if (pendingListingData.phoneSecondary) {
             formData.append('phone_secondary', pendingListingData.phoneSecondary);
         }
-        
         if (pendingListingData.description) {
             formData.append('description', pendingListingData.description);
         }
 
-        // Type Specific Fields
         if ('propertyType' in pendingListingData && pendingListingData.propertyType !== 'Roommate') {
             formData.append('property_type', pendingListingData.propertyType === 'Rental' ? 'RENTAL' : 'PG');
             formData.append('sq_ft', pendingListingData.area?.toString() || '0');
             formData.append('is_broker', pendingListingData.brokerStatus === 'broker' ? 'true' : 'false');
             
-            // Append Amenities as a comma-separated string for Django
             if (pendingListingData.amenities) {
                 const amenitiesString = Array.isArray(pendingListingData.amenities) 
                     ? pendingListingData.amenities.join(',') 
@@ -403,9 +400,8 @@ const handleListProperty = async () => {
             formData.append('location_preference', partialAddress);
         }
 
-        // Append Files (Images and Docs)
         if (pendingListingData.images) {
-            pendingListingData.images.forEach((file: File, index: number) => {
+            pendingListingData.images.forEach((file: File) => {
                 formData.append(`uploaded_images`, file);
             });
         }
@@ -413,7 +409,6 @@ const handleListProperty = async () => {
         if (pendingListingData.electricityBill) formData.append('document_electricity', pendingListingData.electricityBill);
         if (pendingListingData.noc) formData.append('document_noc', pendingListingData.noc);
 
-        // Send to Django!
         await createListing(formData);
 
         setPendingListingData(null);
@@ -422,9 +417,7 @@ const handleListProperty = async () => {
           description: "Your property has been sent to our staff for verification.",
         });
         
-        // Optional: Trigger a refetch here so the user immediately sees it in 'My Properties'
         setTimeout(() => setRateUsModalOpen(true), 500);
-
     } catch (error) {
         console.error("Failed to submit listing to Django:", error);
         toast({
@@ -433,13 +426,13 @@ const handleListProperty = async () => {
             variant: "destructive"
         });
     }
-};
+  };
   
   const handleChat = (name: string) => {
     setChattingWith(name);
     setSelectedItem(null); 
     setChatModalOpen(true);
-  }
+  };
 
   const handleBookInquiry = (listing: Listing, bed: Bed) => {
     setInquiryData({ listing, bed });
@@ -490,14 +483,11 @@ const handleListProperty = async () => {
     navigator.clipboard.writeText(coupon.code);
   };
 
+  // 👇 FIXED: Directly activates plan without popping up the confirmation modal a second time!
   const handlePlanSelect = (plan: { plan: UnlockPlan, title: string, price: number }) => {
-    if (!isLoggedIn) {
-      setUnlockModalOpen(false);
-      setAuthActionRequired('purchase a plan');
-      return;
-    }
     setUnlockModalOpen(false);
-    handleOpenConfirmationModal(plan.title, plan.price, () => handleUnlockPurchase(plan.plan, plan.title, plan.price));
+    setIsPaymentConfirmationOpen(false);
+    handleUnlockPurchase(plan.plan, plan.title, plan.price);
   };
 
   const handleNavigationWithAuth = (page: Page) => {
@@ -540,14 +530,14 @@ const handleListProperty = async () => {
         default:
             return [];
     }
-  }
+  };
   
   const getPageType = (): ListingType => {
       if (['pg', 'rentals'].includes(activePage)) return activePage as ListingType;
       if (activePage === 'roommates') return 'roommate';
       if (activePage === 'my-properties' || activePage === 'liked-properties') return 'rental'; 
       return 'rental';
-  }
+  };
 
   return (
     <div className="flex flex-col min-h-screen bg-background font-body text-foreground">
@@ -615,7 +605,7 @@ const handleListProperty = async () => {
         onUnlock={handleUnlockClick}
         onChat={() => handleChat(selectedItem?.data?.ownerName || 'Roommate')}
       />
-       <AlertDialog open={isUnlockConfirmationOpen} onOpenChange={setUnlockConfirmationOpen}>
+      <AlertDialog open={isUnlockConfirmationOpen} onOpenChange={setUnlockConfirmationOpen}>
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogTitle>Confirm Unlock</AlertDialogTitle>
@@ -649,13 +639,9 @@ const handleListProperty = async () => {
       <ListPropertyPaymentModal
         isOpen={isListPaymentModalOpen}
         onClose={() => setListPaymentModalOpen(false)}
-        onProceedToPayment={(plan) => {
-          setListPaymentModalOpen(false);
-          handleOpenConfirmationModal(plan.title, plan.price, handleListProperty);
-        }}
-        pricing={pricing}
+        propertyId={pendingListingData?.id || ''}
       />
-       <AuthModal
+      <AuthModal
         isOpen={isAuthModalOpen}
         onClose={() => {
             setAuthModalOpen(false);
@@ -663,12 +649,12 @@ const handleListProperty = async () => {
         }}
         onLoginSuccess={handleLoginSuccess}
       />
-       <ChatModal
+      <ChatModal
         isOpen={isChatModalOpen}
         onClose={() => setChatModalOpen(false)}
         contactName={chattingWith}
       />
-       <HistoryModal 
+      <HistoryModal 
         isOpen={isHistoryModalOpen}
         onClose={() => setHistoryModalOpen(false)}
         purchases={purchaseHistory}
@@ -699,10 +685,10 @@ const handleListProperty = async () => {
         availableCoupons={activeCoupons}
       />
       <SlotMachineModal
-          isOpen={isSlotMachineModalOpen}
-          onClose={() => setIsSlotMachineModalOpen(false)}
-          prizes={activeCoupons.filter(c => c.isActive)}
-          onWin={handleCouponWin}
+        isOpen={isSlotMachineModalOpen}
+        onClose={() => setIsSlotMachineModalOpen(false)}
+        prizes={activeCoupons.filter(c => c.isActive)}
+        onWin={handleCouponWin}
       />
     </div>
   );
