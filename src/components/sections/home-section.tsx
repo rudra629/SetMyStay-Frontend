@@ -1,13 +1,10 @@
-import { useEffect, useState } from "react";
-import skylineVideo from "@/assets/city_skyline_aerial.mp4.asset.json";
-
 "use client";
 
 import React from "react";
 import type { Listing, RoommateProfile, Page } from "@/lib/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
-import { Users, Home as HomeIcon, BedDouble, Sparkles } from "lucide-react";
+import { Users, Home as HomeIcon, BedDouble } from "lucide-react";
 import { PropertyCard } from "@/components/shared/property-card";
 import { RoommateCard } from "@/components/shared/roommate-card";
 import {
@@ -16,7 +13,7 @@ import {
   CarouselItem,
   CarouselNext,
   CarouselPrevious,
-} from "@/components/ui/carousel"
+} from "@/components/ui/carousel";
 
 interface HomeSectionProps {
   featuredProperties: Listing[];
@@ -59,10 +56,31 @@ export function HomeSection({
     <div className="container mx-auto px-4 sm:px-6 lg:px-8 py-8 space-y-12 sm:space-y-16">
       {/* Hero Section */}
       <div className="relative isolate rounded-3xl overflow-hidden min-h-[420px] sm:min-h-[50vh] flex items-center justify-center text-center shadow-xl">
+        
+        {/* Fallback Image */}
         <img
           src="https://images.unsplash.com/photo-1477959858617-67f85cf4f1df?q=80&w=2400&auto=format&fit=crop"
-          alt="City skyline" fetchPriority="high" className="absolute inset-0 -z-20 h-full w-full object-cover animate-skyline-pan" />
-        <HeroSkylineVideo />
+          alt="City skyline" 
+          fetchPriority="high" 
+          className="absolute inset-0 -z-20 h-full w-full object-cover animate-skyscraper-pan" 
+        />
+        
+        {/* Direct CDN Video for universal support */}
+        <video
+          autoPlay
+          loop
+          muted
+          playsInline
+          webkit-playsinline="true"
+          preload="auto"
+          className="absolute inset-0 -z-10 h-full w-full object-cover opacity-90 animate-skyscraper-pan"
+        >
+          <source 
+            src="https://assets.mixkit.co/videos/preview/mixkit-aerial-view-of-city-buildings-on-a-sunny-day-41465-large.mp4" 
+            type="video/mp4" 
+          />
+        </video>
+
         <div className="absolute inset-0 bg-gradient-to-b from-slate-900/70 via-blue-950/60 to-slate-900/75"></div>
         <div className="relative text-white max-w-4xl space-y-5 sm:space-y-6 w-full px-4 py-10 sm:p-8">
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-extrabold tracking-tight leading-[1.05]">
@@ -102,91 +120,56 @@ export function HomeSection({
       </div>
 
       {/* Featured Properties Section */}
-      <div>
-        <h2 className="text-3xl font-bold text-foreground mb-8 text-center">Featured Properties</h2>
-        <Carousel
-          opts={{
-            align: "start",
-          }}
-          className="w-full"
-        >
-          <CarouselContent>
-            {featuredProperties.map((listing) => (
-              <CarouselItem key={listing.id} className="md:basis-1/2 lg:basis-1/3">
-                <div className="p-1 h-full">
-                  <PropertyCard
-                    listing={listing}
-                    onViewDetails={(item) => onViewDetails(item, 'listing')}
-                    isLiked={likedItemIds.has(listing.id)}
-                    onToggleLike={() => onToggleLike(listing.id)}
-                    isUnlocked={unlockedIds.has(listing.id)}
-                  />
-                </div>
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-          <CarouselPrevious />
-          <CarouselNext />
-        </Carousel>
-      </div>
+      {featuredProperties.length > 0 && (
+        <div>
+          <h2 className="text-3xl font-bold text-foreground mb-8 text-center">Featured Properties</h2>
+          <Carousel opts={{ align: "start" }} className="w-full">
+            <CarouselContent>
+              {featuredProperties.map((listing) => (
+                <CarouselItem key={listing.id} className="md:basis-1/2 lg:basis-1/3">
+                  <div className="p-1 h-full">
+                    <PropertyCard
+                      listing={listing}
+                      onViewDetails={(item) => onViewDetails(item, 'listing')}
+                      isLiked={likedItemIds.has(listing.id)}
+                      onToggleLike={() => onToggleLike(listing.id)}
+                      isUnlocked={unlockedIds.has(listing.id)}
+                    />
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
+        </div>
+      )}
 
       {/* Featured Roommates Section */}
-      <div>
-        <h2 className="text-3xl font-bold text-foreground mb-8 text-center">Featured Roommate Profiles</h2>
-        <Carousel
-          opts={{
-            align: "start",
-          }}
-          className="w-full"
-        >
-          <CarouselContent>
-            {featuredRoommates.map((profile) => (
-              <CarouselItem key={profile.id} className="md:basis-1/2 lg:basis-1/3">
-                 <div className="p-1 h-full">
-                  <RoommateCard
-                    profile={profile}
-                    onViewDetails={(item) => onViewDetails(item, 'roommate')}
-                    isLiked={likedItemIds.has(profile.id)}
-                    onToggleLike={() => onToggleLike(profile.id)}
-                    isUnlocked={unlockedIds.has(profile.id)}
-                  />
-                </div>
-              </CarouselItem>
-            ))}
-          </CarouselContent>
-          <CarouselPrevious />
-          <CarouselNext />
-        </Carousel>
-      </div>
+      {featuredRoommates.length > 0 && (
+        <div>
+          <h2 className="text-3xl font-bold text-foreground mb-8 text-center">Featured Roommate Profiles</h2>
+          <Carousel opts={{ align: "start" }} className="w-full">
+            <CarouselContent>
+              {featuredRoommates.map((profile) => (
+                <CarouselItem key={profile.id} className="md:basis-1/2 lg:basis-1/3">
+                  <div className="p-1 h-full">
+                    <RoommateCard
+                      profile={profile}
+                      onViewDetails={(item) => onViewDetails(item, 'roommate')}
+                      isLiked={likedItemIds.has(profile.id)}
+                      onToggleLike={() => onToggleLike(profile.id)}
+                      isUnlocked={unlockedIds.has(profile.id)}
+                    />
+                  </div>
+                </CarouselItem>
+              ))}
+            </CarouselContent>
+            <CarouselPrevious />
+            <CarouselNext />
+          </Carousel>
+        </div>
+      )}
     </div>
-  );
-}
-
-function HeroSkylineVideo() {
-  const [enabled, setEnabled] = useState(false);
-  const [ready, setReady] = useState(false);
-  const [failed, setFailed] = useState(false);
-
-  useEffect(() => {
-    // Skip the video on phones, data-saver and reduced-motion; the panning photo stays as fallback.
-    const conn = (navigator as any).connection;
-    const small = window.matchMedia("(max-width: 767px)").matches;
-    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const slow = conn?.saveData || /(^|-)2g$/.test(conn?.effectiveType ?? "");
-    if (small || reduced || slow) return;
-    const id = window.setTimeout(() => setEnabled(true), 300);
-    return () => window.clearTimeout(id);
-  }, []);
-
-  if (!enabled || failed) return null;
-  return (
-    <video
-      autoPlay loop muted playsInline preload="metadata" aria-hidden="true"
-      onCanPlay={() => setReady(true)}
-      onError={() => setFailed(true)}
-      className={`absolute inset-0 -z-10 h-full w-full object-cover transition-opacity duration-1000 ${ready ? "opacity-100" : "opacity-0"}`}
-    >
-      <source src={skylineVideo.url} type="video/mp4" onError={() => setFailed(true)} />
-    </video>
   );
 }
