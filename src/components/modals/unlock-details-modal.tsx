@@ -1,0 +1,280 @@
+"use client";
+
+import { useState, useEffect } from "react";
+import { RazorpayScript } from "@/components/razorpay-script";
+import api, { getCoupons } from "@/lib/api"; // Uses your configured Axios instance with JWT interceptors
+import { useToast } from "@/hooks/use-toast";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card";
+import { Check, Star, Gem, Rocket, Crown, Building, User } from "lucide-react";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import type { UnlockPlan, PricingData, Coupon } from "@/lib/types";
+import { PaymentConfirmationModal } from "./payment-confirmation-modal";
+import axios from "axios";
+interface UnlockDetailsModalProps {
+  isOpen: boolean;
+  onClose: () => void;
+  onPlanSelect: (plan: { plan: UnlockPlan, title: string, price: number }) => void;
+  onNavigateToListProperty: () => void;
+  pricing: PricingData | null;
+}
+
+export function UnlockDetailsModal({ isOpen, onClose, onPlanSelect, onNavigateToListProperty, pricing }: UnlockDetailsModalProps) {
+  const [processingPlan, setProcessingPlan] = useState<string | null>(null);
+  const [selectedPlan, setSelectedPlan] = useState<any | null>(null);
+  const [isConfirmModalOpen, setIsConfirmModalOpen] = useState(false);
+  const [availableCoupons, setAvailableCoupons] = useState<Coupon[]>([]);
+  const { toast } = useToast();
+  
+  // Fetch active coupons when the modal opens
+  useEffect(() => {
+    if (isOpen) {
+      getCoupons().then(setAvailableCoupons).catch(console.error);
+    }
+  }, [isOpen]);
+
+  const unlockPlans = [
+    { plan: 1 as UnlockPlan, title: 'Single Unlock', price: pricing?.unlocks['1'] ?? 19, features: ['1 Listing Unlock', 'Complete Address', 'Direct Contact Details', 'Valid for 30 days'], icon: <Rocket className="w-5 h-5"/>, suffix: 'one-time' },
+    { plan: 5 as UnlockPlan, title: 'Value Pack', price: pricing?.unlocks['5'] ?? 199, features: ['5 Listing Unlocks', 'Complete Address', 'Direct Contact Details', 'Valid for 30 days', 'Best Value!'], icon: <Star className="w-5 h-5"/>, suffix: 'one-time' },
+    { plan: 10 as UnlockPlan, title: 'Pro Pack', price: pricing?.unlocks['10'] ?? 399, features: ['10 Listing Unlocks', 'Complete Address', 'Direct Contact Details', 'Valid for 30 days', 'Great Deal!'], icon: <Gem className="w-5 h-5"/>, suffix: 'one-time' },
+    { plan: 'unlimited' as UnlockPlan, title: 'Ultimate Subscription', price: pricing?.unlocks.unlimited ?? 999, features: ['Unlimited unlocks for 1 month', 'View all contact details', 'Chat with owners directly', 'Cancel anytime'], icon: <Crown className="w-5 h-5"/>, suffix: 'month' },
+  ];
+
+  const listingPlans = [
+    { title: 'Roommate Listing', price: pricing?.listings.roommate ?? 149, features: ['30-day listing', 'Reach thousands of users'], icon: <User className="w-5 h-5" />, type: 'Roommate' },
+    { title: 'PG/Co-living Listing', price: pricing?.listings.pg ?? 349, features: ['30-day listing', 'Featured for 7 days'], icon: <Building className="w-5 h-5" />, type: 'PG/Co-living' },
+    { title: 'Rental Listing', price: pricing?.listings.rental ?? 999, features: ['30-day listing', 'Premium support'], icon: <Crown className="w-5 h-5" />, type: 'Rental' },
+  ];
+
+  // 1. User clicks a plan -> Open confirmation modal first
+  const handleSelectPlan = (plan: any) => {
+    setSelectedPlan(plan);
+    setIsConfirmModalOpen(true);
+  };
+
+  // 2. User confirms in second modal -> Proceed to Razorpay
+  const handleProceedToPayment = async (finalAmount: number) => {
+    const currentPlan = selectedPlan;
+    if (!currentPlan) return;
+
+    // Close both modals immediately to release Radix UI pointer-event locks
+    setIsConfirmModalOpen(false);
+    onClose(); 
+    
+    toast({
+      title: "Connecting to secure gateway...",
+      description: "Please wait a moment.",
+    });
+
+    // Wait 400ms for Radix UI animations/locks to clear before opening Razorpay
+    setTimeout(async () => {
+      try {
+        // Uses `api` from @/lib/api so baseURL and Bearer token are automatically attached
+        const { data } = await api.post('/payments/create-order/', {
+          amount: finalAmount, 
+          property_id: null,
+          plan_name: currentPlan.title
+        });
+
+        const options = {
+          // Uses the key returned by Django first, falling back to Next.js env variable
+          key: data.razorpay_key || import.meta.env.VITE_RAZORPAY_KEY_ID,
+          amount: data.amount,
+          currency: data.currency,
+          name: 'SetMyStay',
+          description: currentPlan.title,
+          order_id: data.order_id,
+          handler: async function (response: any) {
+                    // 1. Save to localStorage purchase history immediately
+                    try {
+                        const existing = JSON.parse(localStorage.getItem('setmystay_purchase_history') || '[]');
+                        const newPurchase = {
+                            id: response.razorpay_payment_id || `pur_${Date.now()}`,
+                            plan: selectedPlan.title,
+                            plan_name: selectedPlan.title,
+                            date: new Date().toISOString(),
+                            created_at: new Date().toISOString(),
+                            amount: finalAmount,
+                        };
+                        localStorage.setItem('setmystay_purchase_history', JSON.stringify([newPurchase, ...existing]));
+                    } catch (e) {
+                        console.error(e);
+                    }
+
+                    // 2. Also notify backend
+                    try {
+                        await axios.post('/payments/verify-local/', {
+                            property_id: null,
+                            razorpay_payment_id: response.razorpay_payment_id,
+                            razorpay_order_id: response.razorpay_order_id,
+                            plan_name: selectedPlan.title,
+                            amount: finalAmount,
+                        });
+                    } catch (e) {
+                        console.warn("History sync warning:", e);
+                    }
+
+                    toast({
+                        title: "Payment Successful!",
+                        description: `Your ${selectedPlan.title} is now active!`,
+                        variant: "default",
+                    });
+
+                    onPlanSelect({ plan: selectedPlan.plan, title: selectedPlan.title, price: finalAmount });
+                },
+          prefill: {
+            name: "SetMyStay User",
+            email: "user@setmystay.com",
+          },
+          theme: { color: '#2563eb' },
+          modal: {
+            ondismiss: function () {
+              setSelectedPlan(null);
+            }
+          }
+        };
+
+        const rzp = new (window as any).Razorpay(options);
+        rzp.on('payment.failed', function (response: any) {
+          toast({
+            title: "Payment Failed",
+            description: response.error.description,
+            variant: "destructive",
+          });
+          setSelectedPlan(null);
+        });
+        rzp.open();
+
+      } catch (error: any) {
+        console.error("Payment Error", error);
+        const errorMsg = error.response?.status === 401 
+          ? "Please sign in before purchasing a plan." 
+          : "Could not initialize payment gateway. Check backend connection.";
+        
+        toast({
+          title: "Error",
+          description: errorMsg,
+          variant: "destructive",
+        });
+        setSelectedPlan(null);
+      }
+    }, 400); 
+  };
+  
+  return (
+    <>
+      <RazorpayScript />
+
+      {/* Pricing Cards Modal */}
+      <Dialog open={isOpen} onOpenChange={onClose}>
+        <DialogContent className="max-w-5xl p-0 max-h-[90vh] flex flex-col">
+          <DialogHeader className="p-4 md:p-6 pb-4 border-b shrink-0">
+            <DialogTitle className="text-2xl sm:text-3xl font-bold text-center">Our Pricing Plans</DialogTitle>
+            <DialogDescription className="text-center text-base sm:text-lg">
+              Choose a plan that's right for you.
+            </DialogDescription>
+          </DialogHeader>
+
+          <Tabs defaultValue="unlock" className="w-full flex flex-col flex-1 min-h-0">
+            <div className="px-4 md:px-6 py-4 border-b">
+              <TabsList className="grid w-full grid-cols-2 h-12">
+                <TabsTrigger value="unlock" className="text-sm sm:text-base">Unlock Contact Details</TabsTrigger>
+                <TabsTrigger value="list" className="text-sm sm:text-base">List Your Property</TabsTrigger>
+              </TabsList>
+            </div>
+
+            <div className="flex-1 overflow-y-auto">
+              <TabsContent value="unlock" className="mt-0">
+                <div className="p-4 md:p-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-6">
+                    {unlockPlans.map(p => (
+                      <Card key={p.title} className="flex flex-col border-primary/50 hover:shadow-lg transition-shadow">
+                        <CardHeader className="items-center text-center">
+                          <div className="p-3 bg-primary/10 rounded-full mb-2 text-primary">{p.icon}</div>
+                          <CardTitle>{p.title}</CardTitle>
+                          <CardDescription>
+                            <span className="text-3xl font-bold text-foreground">₹{p.price}</span>
+                            <span className="text-muted-foreground">/{p.suffix}</span>
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                          <ul className="space-y-2 text-sm text-muted-foreground">
+                            {p.features.map(feature => (
+                              <li key={feature} className="flex items-start gap-2">
+                                <Check className="w-4 h-4 text-green-500 mt-1 shrink-0"/>
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                        <CardFooter>
+                          <Button 
+                            className="w-full" 
+                            disabled={processingPlan === p.title}
+                            onClick={() => handleSelectPlan(p)}
+                          >
+                            {processingPlan === p.title ? "Processing..." : "Choose Plan"}
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+
+              <TabsContent value="list" className="mt-0">
+                <div className="p-4 md:p-8">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4 md:gap-6">
+                    {listingPlans.map(p => (
+                      <Card key={p.title} className="flex flex-col border-accent/50 hover:shadow-lg transition-shadow">
+                        <CardHeader className="items-center text-center">
+                          <div className="p-3 bg-accent/10 rounded-full mb-2 text-accent">{p.icon}</div>
+                          <CardTitle>{p.title}</CardTitle>
+                          <CardDescription>
+                            <span className="text-3xl font-bold text-foreground">₹{p.price}</span>
+                            <span className="text-muted-foreground">/listing</span>
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="flex-grow">
+                          <ul className="space-y-2 text-sm text-muted-foreground">
+                            {p.features.map(feature => (
+                              <li key={feature} className="flex items-start gap-2">
+                                <Check className="w-4 h-4 text-green-500 mt-1 shrink-0"/>
+                                <span>{feature}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </CardContent>
+                        <CardFooter>
+                          <Button className="w-full" variant="secondary" onClick={onNavigateToListProperty}>
+                            List your {p.type}
+                          </Button>
+                        </CardFooter>
+                      </Card>
+                    ))}
+                  </div>
+                </div>
+              </TabsContent>
+            </div>
+          </Tabs>
+        </DialogContent>
+      </Dialog>
+
+      {/* Coupon / Confirmation Modal */}
+      {selectedPlan && (
+        <PaymentConfirmationModal
+          isOpen={isConfirmModalOpen}
+          onClose={() => {
+            setIsConfirmModalOpen(false);
+            setSelectedPlan(null);
+          }}
+          onConfirm={handleProceedToPayment}
+          planName={selectedPlan.title}
+          amount={selectedPlan.price}
+          availableCoupons={availableCoupons}
+        />
+      )}
+    </>
+  );
+}
